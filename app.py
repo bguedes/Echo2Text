@@ -246,6 +246,7 @@ custom_css = """
 with gr.Blocks(css=custom_css) as demo:
     gr.Markdown("# Nvidia Parakeet v3 Timestamp Processor")
     gr.Markdown("Upload an audio file, then click Transcribe to process timestamps with parakeet-tdt-0.6b-v3-onnx.")
+    gr.Markdown("This is a CPU space, so expect slow processing: about 250s per 10m audio. But total duration isn't limited.")
 
     timestamps_state = gr.State()
 
