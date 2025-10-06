@@ -14,6 +14,8 @@ tags:
 - onnx
 preload_from_hub:
 - istupakov/parakeet-tdt-0.6b-v3-onnx
+models:
+- istupakov/parakeet-tdt-0.6b-v3-onnx
 ---
 
 This space uses Nvidia [parakeet-tdt-0.6b-v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) model in [onnx format](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx) with [onnx-asr](https://github.com/istupakov/onnx-asr) backend.  
