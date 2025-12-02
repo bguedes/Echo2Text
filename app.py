@@ -271,6 +271,7 @@ with gr.Blocks(css=custom_css) as demo:
             headers=["Index", "Start (s)", "End (s)", "Segment"],
             datatype=["number", "number", "number", "str"],
             label="Timestamps",
+            wrap=True,
             interactive=False
         )
 
