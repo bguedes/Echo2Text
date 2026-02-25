@@ -513,9 +513,35 @@ async function detectActions(fullText) {
   }
 }
 
+// ─── Summary rendering ────────────────────────────────────────────────────────
+function renderSummary() {
+  const card    = document.getElementById('summary-card');
+  const content = document.getElementById('summary-content');
+  if (!card || !content) return;
+  if (!summaryText && !nextStepsText) { card.classList.add('hidden'); return; }
+  card.classList.remove('hidden');
+  content.innerHTML = `
+    ${summaryText
+      ? `<div class="summary-text">${escHtml(summaryText)}</div>`
+      : ''}
+    ${nextStepsText
+      ? `<div class="summary-next-steps-label">Next steps</div>
+         <div class="summary-next-steps">${escHtml(nextStepsText)}</div>`
+      : ''}
+  `;
+}
+
 // ─── LLM — Summary generation (end of meeting, one-shot) ─────────────────────
 async function generateSummary(fullText) {
   if (!fullText.trim() || !llmConnected) return;
+
+  // Show generating state immediately
+  const card    = document.getElementById('summary-card');
+  const content = document.getElementById('summary-content');
+  if (card && content) {
+    card.classList.remove('hidden');
+    content.innerHTML = '<div class="summary-generating">Generating summary…</div>';
+  }
 
   const qSummary = questions.map((q, i) =>
     `Q${i + 1}: ${q.text}\nA: ${q.answer || '(no answer)'}`
@@ -543,7 +569,7 @@ async function generateSummary(fullText) {
         temperature: 0.2, max_tokens: 512, stream: false,
       }),
     });
-    if (!resp.ok) return;
+    if (!resp.ok) { renderSummary(); return; }
 
     const j   = await resp.json();
     const raw = j.choices?.[0]?.message?.content ?? '';
@@ -557,6 +583,7 @@ async function generateSummary(fullText) {
   } catch (e) {
     console.error('[llm-summary]', e);
   }
+  renderSummary();
 }
 
 // ─── Auto-save to DB ──────────────────────────────────────────────────────────
@@ -958,6 +985,10 @@ function resetAll() {
   questionsList.innerHTML = '';
   actionsList.innerHTML   = '';
   tsBody.innerHTML        = '';
+  const summaryCard = document.getElementById('summary-card');
+  if (summaryCard) summaryCard.classList.add('hidden');
+  const summaryContent = document.getElementById('summary-content');
+  if (summaryContent) summaryContent.innerHTML = '';
   btnCsv.disabled         = true;
   btnSrt.disabled         = true;
   setDot(dotMic, 'red');
