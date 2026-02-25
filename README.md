@@ -24,58 +24,58 @@ Locally I tested it with Nvidia RTX3060 and RTX4060Ti and it used about 6GB VRAM
 
 ---
 
-# Parakeet — Transcription & Analyse temps réel
+# Echo2Text — Real-time Meeting Transcription & Analysis
 
-Application de bureau (Windows / macOS) pour la transcription en direct de réunions avec détection automatique des questions et actions, propulsée par le modèle ASR **NeMo Parakeet TDT 0.6B v3** (ONNX) et un LLM local via **LMStudio**.
-
----
-
-## Table des matières
-
-1. [Prérequis système](#1-prérequis-système)
-2. [Installation de Node.js](#2-installation-de-nodejs)
-3. [Installation de Python](#3-installation-de-python)
-4. [Cloner / décompresser le projet](#4-cloner--décompresser-le-projet)
-5. [Installer les dépendances Python](#5-installer-les-dépendances-python)
-6. [Installer les dépendances Node.js](#6-installer-les-dépendances-nodejs)
-7. [Installer et configurer LMStudio](#7-installer-et-configurer-lmstudio)
-8. [Premier lancement](#8-premier-lancement)
-9. [Lancement macOS (Apple M3)](#9-lancement-macos-apple-m3)
-10. [Sources audio supportées](#10-sources-audio-supportées)
-11. [FAQ / Problèmes courants](#11-faq--problèmes-courants)
+Desktop application (Windows / macOS) for live meeting transcription with automatic question and action item detection, powered by the **NeMo Parakeet TDT 0.6B v3** ASR model (ONNX) and a local LLM via **LMStudio**.
 
 ---
 
-## 1. Prérequis système
+## Table of Contents
 
-| Composant | Windows | macOS (M3) |
+1. [System Requirements](#1-system-requirements)
+2. [Install Node.js](#2-install-nodejs)
+3. [Install Python](#3-install-python)
+4. [Clone / Extract the Project](#4-clone--extract-the-project)
+5. [Install Python Dependencies](#5-install-python-dependencies)
+6. [Install Node.js Dependencies](#6-install-nodejs-dependencies)
+7. [Install and Configure LMStudio](#7-install-and-configure-lmstudio)
+8. [First Launch](#8-first-launch)
+9. [macOS Launch (Apple M3)](#9-macos-launch-apple-m3)
+10. [Supported Audio Sources](#10-supported-audio-sources)
+11. [FAQ / Troubleshooting](#11-faq--troubleshooting)
+
+---
+
+## 1. System Requirements
+
+| Component | Windows | macOS (M3) |
 |-----------|---------|------------|
-| OS | Windows 10/11 64-bit | macOS 14 Sonoma ou plus récent |
-| GPU (optionnel) | NVIDIA CUDA 11.8+ | — (CPU uniquement, Metal non supporté par ONNX Runtime) |
-| RAM | 8 Go minimum, 16 Go recommandé | 8 Go minimum, 16 Go recommandé |
-| Espace disque | ~5 Go (modèle ~600 Mo + LMStudio) | ~5 Go |
+| OS | Windows 10/11 64-bit | macOS 14 Sonoma or later |
+| GPU (optional) | NVIDIA CUDA 11.8+ | — (CPU only, Metal not supported by ONNX Runtime) |
+| RAM | 8 GB minimum, 16 GB recommended | 8 GB minimum, 16 GB recommended |
+| Disk space | ~5 GB (model ~600 MB + LMStudio) | ~5 GB |
 | Python | 3.10 – 3.12 | 3.10 – 3.12 |
-| Node.js | 18 LTS ou 20 LTS | 18 LTS ou 20 LTS |
+| Node.js | 18 LTS or 20 LTS | 18 LTS or 20 LTS |
 
-> **GPU NVIDIA** : si vous disposez d'une carte NVIDIA, `onnx-asr` utilisera CUDA automatiquement pour accélérer la transcription. Sans GPU la transcription tourne sur CPU (plus lent mais fonctionnel).
+> **NVIDIA GPU**: if you have an NVIDIA card, `onnx-asr` will automatically use CUDA to accelerate transcription. Without a GPU, transcription runs on CPU (slower but fully functional).
 
 ---
 
-## 2. Installation de Node.js
+## 2. Install Node.js
 
 ### Windows
-Téléchargez l'installateur LTS depuis [https://nodejs.org](https://nodejs.org) et exécutez-le.
-Vérification :
+Download the LTS installer from [https://nodejs.org](https://nodejs.org) and run it.
+Verify:
 ```cmd
-node -v   # ex. v20.11.0
-npm -v    # ex. 10.2.4
+node -v   # e.g. v20.11.0
+npm -v    # e.g. 10.2.4
 ```
 
 ### macOS
 ```bash
-# Via Homebrew (recommandé)
+# Via Homebrew (recommended)
 brew install node@20
-# Ou via nvm (gestionnaire de versions)
+# Or via nvm (version manager)
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 source ~/.zshrc
 nvm install 20
@@ -84,12 +84,12 @@ nvm use 20
 
 ---
 
-## 3. Installation de Python
+## 3. Install Python
 
 ### Windows
-Téléchargez Python 3.11 depuis [https://www.python.org/downloads/](https://www.python.org/downloads/).
-**Important** : cochez "Add Python to PATH" lors de l'installation.
-Vérification :
+Download Python 3.11 from [https://www.python.org/downloads/](https://www.python.org/downloads/).
+**Important**: check "Add Python to PATH" during installation.
+Verify:
 ```cmd
 python --version   # Python 3.11.x
 ```
@@ -98,81 +98,81 @@ python --version   # Python 3.11.x
 ```bash
 # Via Homebrew
 brew install python@3.11
-# Vérification
+# Verify
 python3 --version  # Python 3.11.x
 ```
 
 ---
 
-## 4. Cloner / décompresser le projet
+## 4. Clone / Extract the Project
 
 ```bash
 # Via Git
-git clone https://github.com/votre-repo/parakeet-tdt-0.6b-v3-onnx-cpu.git
-cd parakeet-tdt-0.6b-v3-onnx-cpu
+git clone https://github.com/bguedes/Echo2Text.git
+cd Echo2Text
 
-# Ou décompressez l'archive ZIP dans le dossier de votre choix
+# Or extract the ZIP archive into the folder of your choice
 ```
 
 ---
 
-## 5. Installer les dépendances Python
+## 5. Install Python Dependencies
 
-Le projet utilise un **environnement virtuel** (`venv`) isolé du Python système.
+The project uses a **virtual environment** (`venv`) isolated from the system Python.
 
 ### Windows
 ```cmd
-cd parakeet-tdt-0.6b-v3-onnx-cpu
+cd Echo2Text
 
-:: Créer l'environnement virtuel
+:: Create the virtual environment
 python -m venv venv
 
-:: Activer l'environnement
+:: Activate the environment
 venv\Scripts\activate
 
-:: Installer les dépendances
+:: Install dependencies
 pip install -r requirements.txt
 ```
 
-> **Avec GPU NVIDIA** : `onnx-asr[gpu,hub]` installe automatiquement `onnxruntime-gpu`. Assurez-vous que CUDA 11.8+ est installé.
-> **Sans GPU** : remplacez `onnx-asr[gpu,hub]` par `onnx-asr[hub]` dans `requirements.txt` avant l'installation.
+> **With NVIDIA GPU**: `onnx-asr[gpu,hub]` automatically installs `onnxruntime-gpu`. Make sure CUDA 11.8+ is installed.
+> **Without GPU**: replace `onnx-asr[gpu,hub]` with `onnx-asr[hub]` in `requirements.txt` before installing.
 
 ### macOS (M3)
 ```bash
-cd parakeet-tdt-0.6b-v3-onnx-cpu
+cd Echo2Text
 
-# Créer l'environnement virtuel
+# Create the virtual environment
 python3 -m venv venv
 
-# Activer l'environnement
+# Activate the environment
 source venv/bin/activate
 
-# Installer les dépendances (CPU uniquement sur M3)
+# Install dependencies (CPU only on M3)
 pip install "onnx-asr[hub]>=0.6.1" "fastapi>=0.115.0" "uvicorn[standard]>=0.30.0"
 ```
 
-> Sur Apple Silicon, `onnxruntime` s'exécute en mode CPU. La directive `[gpu]` n'est pas nécessaire.
+> On Apple Silicon, `onnxruntime` runs in CPU mode. The `[gpu]` extra is not needed.
 
-Le premier lancement téléchargera automatiquement le modèle **nemo-parakeet-tdt-0.6b-v3** (~600 Mo) depuis HuggingFace Hub.
+The first launch will automatically download the **nemo-parakeet-tdt-0.6b-v3** model (~600 MB) from HuggingFace Hub.
 
 ---
 
-## 6. Installer les dépendances Node.js
+## 6. Install Node.js Dependencies
 
 ```bash
 cd electron
 npm install
 ```
 
-Cela installe uniquement **Electron ^32** (défini dans `electron/package.json`). Aucune dépendance native n'est requise.
+This installs only **Electron ^32** (defined in `electron/package.json`). No native dependencies are required.
 
 ---
 
-## 7. Installer et configurer LMStudio
+## 7. Install and Configure LMStudio
 
-LMStudio est le serveur LLM local qui fournit les réponses aux questions détectées et génère le résumé de réunion.
+LMStudio is the local LLM server that answers detected questions and generates the meeting summary.
 
-### 7.1 Installation automatique (scripts fournis)
+### 7.1 Automatic Installation (provided scripts)
 
 #### Windows
 ```cmd
@@ -185,52 +185,52 @@ chmod +x install-lmstudio.sh
 ./install-lmstudio.sh
 ```
 
-Ces scripts téléchargent et installent LMStudio automatiquement.
+These scripts download and install LMStudio automatically.
 
-### 7.2 Installation manuelle
+### 7.2 Manual Installation
 
-1. Rendez-vous sur [https://lmstudio.ai](https://lmstudio.ai)
-2. Téléchargez la version correspondant à votre système :
-   - **Windows** : `LM-Studio-x.x.x-Setup.exe`
-   - **macOS (Apple Silicon)** : `LM-Studio-x.x.x-arm64.dmg`
-3. Installez l'application
+1. Go to [https://lmstudio.ai](https://lmstudio.ai)
+2. Download the version for your system:
+   - **Windows**: `LM-Studio-x.x.x-Setup.exe`
+   - **macOS (Apple Silicon)**: `LM-Studio-x.x.x-arm64.dmg`
+3. Install the application
 
-### 7.3 Chargement d'un modèle LLM
+### 7.3 Loading an LLM Model
 
-Parakeet fonctionne avec n'importe quel modèle compatible **OpenAI chat completions** chargé dans LMStudio.
+Echo2Text works with any **OpenAI chat completions** compatible model loaded in LMStudio.
 
-**Modèles recommandés** (bon équilibre vitesse / qualité) :
+**Recommended models** (good speed / quality balance):
 
-| Modèle | Taille | RAM nécessaire |
-|--------|--------|---------------|
-| `Mistral 7B Instruct v0.3` (Q4_K_M) | ~4.4 Go | 8 Go |
-| `Llama 3.1 8B Instruct` (Q4_K_M) | ~4.9 Go | 8 Go |
-| `Qwen2.5 7B Instruct` (Q4_K_M) | ~4.5 Go | 8 Go |
-| `Phi-3.5 Mini Instruct` (Q4_K_M) | ~2.2 Go | 6 Go |
+| Model | Size | Required RAM |
+|-------|------|-------------|
+| `Mistral 7B Instruct v0.3` (Q4_K_M) | ~4.4 GB | 8 GB |
+| `Llama 3.1 8B Instruct` (Q4_K_M) | ~4.9 GB | 8 GB |
+| `Qwen2.5 7B Instruct` (Q4_K_M) | ~4.5 GB | 8 GB |
+| `Phi-3.5 Mini Instruct` (Q4_K_M) | ~2.2 GB | 6 GB |
 
-**Étapes dans LMStudio :**
+**Steps in LMStudio:**
 
-1. Ouvrez LMStudio
-2. Onglet **Search** (loupe) → cherchez le modèle souhaité (ex. `mistral-7b-instruct`)
-3. Cliquez **Download** sur la variante `Q4_K_M`
-4. Une fois téléchargé, onglet **Local Server** (icône `<->`)
-5. Sélectionnez le modèle dans le menu déroulant
-6. Cliquez **Start Server** → le serveur démarre sur `http://localhost:1234`
+1. Open LMStudio
+2. **Search** tab (magnifying glass) → search for a model (e.g. `mistral-7b-instruct`)
+3. Click **Download** on the `Q4_K_M` variant
+4. Once downloaded, go to the **Local Server** tab (icon `<->`)
+5. Select your model from the dropdown
+6. Click **Start Server** → the server starts on `http://localhost:1234`
 
-> L'URL `http://localhost:1234/v1` est pré-configurée dans Parakeet. Vous pouvez la modifier dans l'interface si nécessaire.
+> The URL `http://localhost:1234/v1` is pre-configured in Echo2Text. You can change it in the interface if needed.
 
-### 7.4 Démarrage automatique du serveur LMStudio
+### 7.4 Auto-start the LMStudio Server
 
-Pour que LMStudio démarre son serveur au lancement :
+To have LMStudio start its server automatically on launch:
 
-- Dans LMStudio : `Settings > Local Server > Start server on app startup`
+- In LMStudio: `Settings > Local Server > Start server on app startup`
 
 ---
 
-## 8. Premier lancement
+## 8. First Launch
 
 ### Windows
-Double-cliquez sur `start.bat` ou exécutez dans un terminal :
+Double-click `start.bat` or run in a terminal:
 ```cmd
 start.bat
 ```
@@ -241,89 +241,89 @@ chmod +x start.sh
 ./start.sh
 ```
 
-### Ce qui se passe au premier démarrage
+### What happens on first startup
 
-1. Le serveur Python (`server.py`) démarre sur le port **8765**
-2. Le modèle Parakeet est téléchargé depuis HuggingFace (~600 Mo, **une seule fois**)
-3. La fenêtre Electron s'ouvre après ~5 secondes
-4. Le point **Serveur ASR** passe au vert quand le modèle est chargé (~30s–2min selon votre machine)
-5. Le point **LMStudio** passe au vert si le serveur LMStudio est actif sur le port 1234
+1. The Python server (`server.py`) starts on port **8765**
+2. The Parakeet model is downloaded from HuggingFace (~600 MB, **once only**)
+3. The Electron window opens after ~5 seconds
+4. The **ASR Server** dot turns green when the model is loaded (~30s–2min depending on your machine)
+5. The **LMStudio** dot turns green if the LMStudio server is active on port 1234
 
-### Premier enregistrement
+### First recording
 
-1. Cliquez **▶ Démarrer** → une modal s'ouvre
-2. Saisissez le nom de l'entreprise et le titre de la réunion
-3. Cliquez **▶ Démarrer** dans la modal
-4. Parlez — la transcription apparaît en temps réel
-5. Cliquez **■ Arrêter** pour terminer et générer le résumé
+1. Click **▶ Start** → a setup modal opens
+2. Enter the company name and meeting title
+3. Click **▶ Start** in the modal
+4. Speak — transcription appears in real time
+5. Click **■ Stop** to end the session and generate the summary
 
 ---
 
-## 9. Lancement macOS (Apple M3)
+## 9. macOS Launch (Apple M3)
 
-Le script `start.sh` est l'équivalent de `start.bat` pour macOS.
+The `start.sh` script is the macOS equivalent of `start.bat`.
 
 ```bash
 ./start.sh
 ```
 
-**Ce que fait `start.sh` :**
-- Détecte l'environnement virtuel Python (`venv/bin/python`) ou utilise `python3`
-- Lance `server.py` en arrière-plan
-- Attend 5 secondes
-- Lance l'application Electron via `npm start` dans le dossier `electron/`
+**What `start.sh` does:**
+- Detects the Python virtual environment (`venv/bin/python`) or falls back to `python3`
+- Starts `server.py` in the background
+- Waits 5 seconds
+- Launches the Electron app via `npm start` in the `electron/` folder
 
-**Différences avec Windows :**
-- Sur M3, la transcription s'effectue en **CPU** (ONNX Runtime ARM64) — légèrement plus lent qu'avec un GPU NVIDIA, mais parfaitement utilisable
-- Aucune installation de CUDA nécessaire
-- Le modèle Parakeet TDT v3 tourne nativement sur Apple Silicon
+**Differences from Windows:**
+- On M3, transcription runs on **CPU** (ONNX Runtime ARM64) — slightly slower than an NVIDIA GPU, but perfectly usable
+- No CUDA installation required
+- The Parakeet TDT v3 model runs natively on Apple Silicon
 
 ---
 
-## 10. Sources audio supportées
+## 10. Supported Audio Sources
 
 | Source | Description |
 |--------|-------------|
-| **Micro système** | Microphone par défaut |
-| **Micro X** | Tout périphérique d'entrée audio détecté |
-| **Audio système** | Capture l'audio de Zoom, Teams, Meet, etc. (via loopback) |
-| **YouTube / URL Web** | Ouvre une fenêtre navigateur, capture l'audio système |
-| **Fichier audio** | Transcription d'un fichier wav, mp3, mp4, ogg |
+| **System microphone** | Default microphone |
+| **Microphone X** | Any detected audio input device |
+| **System audio** | Captures audio from Zoom, Teams, Meet, etc. (via loopback) |
+| **YouTube / Web URL** | Opens a browser window, captures system audio |
+| **Audio file** | Transcribe a wav, mp3, mp4, or ogg file |
 
-> **Audio système sur macOS** : nécessite un pilote loopback tiers comme [BlackHole](https://github.com/ExistentialAudio/BlackHole) (gratuit).
-> Installez BlackHole, puis dans les Préférences Son macOS créez un **Aggregate Device** combinant votre sortie habituelle + BlackHole. Sélectionnez BlackHole comme source dans Parakeet.
+> **System audio on macOS**: requires a third-party loopback driver such as [BlackHole](https://github.com/ExistentialAudio/BlackHole) (free).
+> Install BlackHole, then in macOS Sound Preferences create an **Aggregate Device** combining your usual output + BlackHole. Select BlackHole as the source in Echo2Text.
 
 ---
 
-## 11. FAQ / Problèmes courants
+## 11. FAQ / Troubleshooting
 
-### Le point "Serveur ASR" reste rouge
-- Vérifiez que le serveur Python est démarré
-- Vérifiez que le port 8765 est libre :
-  - Windows : `netstat -ano | findstr 8765`
-  - macOS : `lsof -i :8765`
-- Consultez les logs dans le terminal
+### The "ASR Server" dot stays red
+- Make sure the Python server is running
+- Check that port 8765 is free:
+  - Windows: `netstat -ano | findstr 8765`
+  - macOS: `lsof -i :8765`
+- Check the logs in the terminal where the server is running
 
-### Erreur lors de l'installation de `onnx-asr[gpu,hub]`
-- Assurez-vous que CUDA 11.8+ est installé (Windows avec GPU NVIDIA)
-- Sur macOS M3 ou PC sans GPU, utilisez `onnx-asr[hub]` (CPU uniquement)
+### Error installing `onnx-asr[gpu,hub]`
+- Make sure CUDA 11.8+ is installed (Windows with NVIDIA GPU)
+- On macOS M3 or a PC without a GPU, use `onnx-asr[hub]` (CPU only)
 
-### Le point "LMStudio" reste rouge
-- Vérifiez que LMStudio est ouvert et que le serveur local est démarré (onglet `<->`)
-- Vérifiez l'URL dans Parakeet : `http://localhost:1234/v1`
-- Assurez-vous qu'un modèle est **chargé et actif** dans LMStudio
+### The "LMStudio" dot stays red
+- Make sure LMStudio is open and the local server is started (tab `<->`)
+- Check the URL in Echo2Text: `http://localhost:1234/v1`
+- Make sure a model is **loaded and active** in LMStudio
 
-### `npm install` échoue dans `electron/`
-- Vérifiez la version Node.js : `node -v` doit être ≥ 18
-- Supprimez `node_modules/` et relancez : `rm -rf node_modules && npm install`
+### `npm install` fails in `electron/`
+- Check the Node.js version: `node -v` must be ≥ 18
+- Delete `node_modules/` and retry: `rm -rf node_modules && npm install`
 
-### Aucun son capturé depuis Zoom/Teams (macOS)
-- Installez [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole) (gratuit)
-- Dans les réglages son macOS, créez un **Aggregate Device** combinant votre micro + BlackHole
-- Sélectionnez cet Aggregate Device comme sortie dans Zoom/Teams
-- Dans Parakeet, sélectionnez "BlackHole 2ch" comme source audio
+### No audio captured from Zoom/Teams (macOS)
+- Install [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole) (free)
+- In macOS Sound settings, create an **Aggregate Device** combining your mic + BlackHole
+- Set this Aggregate Device as the output in Zoom/Teams
+- In Echo2Text, select "BlackHole 2ch" as the audio source
 
-### La transcription est lente
-- Sur CPU (sans GPU), comptez ~2–5s de latence par chunk de 5s de parole
-- Avec GPU NVIDIA, la latence tombe à <1s
-- Sur M3, la vitesse est comparable à un CPU Intel Core i7 récent (suffisant pour usage en réunion)
+### Transcription is slow
+- On CPU (no GPU), expect ~2–5s latency per 5s audio chunk
+- With an NVIDIA GPU, latency drops to <1s
+- On M3, speed is comparable to a recent Intel Core i7 (sufficient for meeting use)
