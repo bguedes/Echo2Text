@@ -13,7 +13,7 @@
   --red:           #e05252;
   --radius:        8px;
   --font:          'Segoe UI', system-ui, sans-serif;
-  /* Palette étendue — surchargée par les thèmes */
+  /* Extended palette — overridden by themes */
   --el-bg:         var(--el-bg);
   --el-bg-hover:   var(--el-bg-hover);
   --el-bg-hover2:  var(--el-bg-hover2);
@@ -207,7 +207,7 @@ button:disabled { opacity: 0.4; cursor: default; }
   vertical-align: middle;
 }
 
-/* ─── Boutons suppression inline ───────────────────────────────────────────── */
+/* ─── Inline delete buttons ────────────────────────────────────────────────── */
 .btn-delete-item {
   background: transparent;
   border: none;
@@ -236,7 +236,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 tbody tr:hover .btn-delete-row { opacity: 1; }
 .btn-delete-row:hover { color: var(--red); }
 
-/* ─── Questions + réponses ─────────────────────────────────────────────────── */
+/* ─── Questions + answers ───────────────────────────────────────────────────── */
 .qa-item {
   display: flex;
   flex-direction: column;
@@ -279,7 +279,7 @@ tbody tr:hover .btn-delete-row { opacity: 1; }
   50%       { opacity: 0.35; }
 }
 
-/* ─── Actions + indicateur ─────────────────────────────────────────────────── */
+/* ─── Actions + indicator ───────────────────────────────────────────────────── */
 .list-item {
   display: flex;
   gap: 8px;
@@ -715,7 +715,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   font-style: italic;
 }
 
-/* ─── Modal setup réunion ──────────────────────────────────────────────────── */
+/* ─── Meeting setup modal ───────────────────────────────────────────────────── */
 #meeting-setup-modal {
   position: fixed;
   inset: 0;
@@ -808,7 +808,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 .btn-danger:hover { background: rgba(224,82,82,0.25); }
 
-/* ─── Ligne URL Web ────────────────────────────────────────────────────────── */
+/* ─── Web URL row ───────────────────────────────────────────────────────────── */
 .url-source-row {
   flex: 0 0 100%;       /* prend toute la largeur (wrap) */
   display: flex;
@@ -849,7 +849,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 #btn-close-url:hover { color: var(--red); background: var(--el-bg-hover); }
 
-/* ─── Toggle langue ────────────────────────────────────────────────────────── */
+/* ─── Language toggle ───────────────────────────────────────────────────────── */
 .lang-toggle {
   display: flex;
   border: 1px solid var(--border);
@@ -869,7 +869,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 .lang-btn.active              { background: var(--accent); color: #fff; }
 .lang-btn:hover:not(.active)  { background: var(--el-bg-hover); color: var(--text); }
 
-/* ─── Source audio ─────────────────────────────────────────────────────────── */
+/* ─── Audio source ──────────────────────────────────────────────────────────── */
 .audio-source-group {
   display: flex;
   align-items: center;
@@ -920,10 +920,10 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   THÈMES
+   THEMES
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* ─── Clair ─────────────────────────────────────────────────────────────── */
+/* ─── Light ─────────────────────────────────────────────────────────────── */
 body[data-theme="light"] {
   --bg:            #f0f2f8;
   --card:          #ffffff;
@@ -961,7 +961,7 @@ body[data-theme="nord"] {
   --text-dim:      #81a1c1;
 }
 
-/* ─── Sépia ─────────────────────────────────────────────────────────────── */
+/* ─── Sepia ─────────────────────────────────────────────────────────────── */
 body[data-theme="sepia"] {
   --bg:            #f4f0e6;
   --card:          #fffdf5;
@@ -980,7 +980,7 @@ body[data-theme="sepia"] {
   --text-dim:      #7d6b58;
 }
 
-/* ─── Sélecteur de thème ─────────────────────────────────────────────────── */
+/* ─── Theme selector ────────────────────────────────────────────────────── */
 .theme-switcher {
   display: flex;
   align-items: center;
@@ -1005,7 +1005,7 @@ body[data-theme="sepia"] {
 .theme-btn[data-theme="nord"]  { background: linear-gradient(135deg, #3b4252 55%, #88c0d0 55%); }
 .theme-btn[data-theme="sepia"] { background: linear-gradient(135deg, #fffdf5 55%, #8b5a00 55%); }
 
-/* Corrections light/sépia : inputs et selects */
+/* Light/sepia fixes: inputs and selects */
 body[data-theme="light"] input,
 body[data-theme="light"] textarea,
 body[data-theme="light"] select,
@@ -1015,7 +1015,7 @@ body[data-theme="sepia"] select {
   color-scheme: light;
 }
 
-/* Toast notification — thème clair/sépia */
+/* Toast notification — light/sepia theme */
 body[data-theme="light"] #toast-notification,
 body[data-theme="sepia"] #toast-notification {
   background: #d4edda;
@@ -1023,9 +1023,40 @@ body[data-theme="sepia"] #toast-notification {
   border-color: var(--green);
 }
 
-/* Scrollbar — thème clair/sépia */
+/* Scrollbar — light/sepia theme */
 body[data-theme="light"] ::-webkit-scrollbar-thumb,
 body[data-theme="sepia"] ::-webkit-scrollbar-thumb { background: var(--el-bg-hover2); }
+
+/* ─── Transcript display ── */
+.transcript-display {
+  flex: 1; overflow-y: auto; padding: 10px 12px;
+  font-size: 13px; line-height: 1.7;
+}
+.speaker-turn   { margin-bottom: 10px; }
+.speaker-segment { color: var(--text); }
+
+/* ─── Speaker badges ── */
+.speaker-badge {
+  display: inline-block; font-size: 11px; font-weight: 700;
+  padding: 2px 9px; border-radius: 10px; margin-bottom: 4px;
+  letter-spacing: 0.04em;
+}
+.spk-color-0 { background: #4f63d2; color: #fff; }
+.spk-color-1 { background: #2a9d8f; color: #fff; }
+.spk-color-2 { background: #e76f51; color: #fff; }
+.spk-color-3 { background: #8b5cf6; color: #fff; }
+.spk-color-4 { background: #f4a261; color: #222; }
+.spk-color-5 { background: #e9c46a; color: #222; }
+
+/* ─── Speakers panel ── */
+.speakers-list { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
+.speaker-row   { display: flex; align-items: center; gap: 8px; }
+.speaker-name-input {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text);
+  padding: 4px 8px; font-size: 12px; width: 130px; outline: none;
+}
+.speaker-name-input:focus { border-color: var(--accent); }
 
 /* Backdrop modal/overlay */
 body[data-theme="light"] .modal-backdrop,

@@ -73,10 +73,17 @@
     <button id="btn-change-meeting">Changer</button>
   </div>
 
+  <!-- ── Speakers panel ────────────────────────────────────────────────────── -->
+  <div id="speakers-panel" class="card hidden">
+    <div class="card-label">Speakers <span class="muted-label">(click to rename)</span></div>
+    <div id="speakers-list" class="speakers-list"></div>
+  </div>
+
   <!-- ── Transcription ───────────────────────────────────────────────────── -->
-  <div class="card" id="live-text" style="flex: 0 0 120px;">
-    <div class="card-label">Transcription en direct</div>
-    <textarea id="transcript-area" readonly placeholder="Commencez à parler…"></textarea>
+  <div class="card" id="live-text" style="flex: 0 0 200px;">
+    <div class="card-label">Live Transcription</div>
+    <div id="transcript-display" class="transcript-display"></div>
+    <textarea id="transcript-area" readonly style="display:none"></textarea>
   </div>
 
   <!-- ── Q&A ────────────────────────────────────────────────────────────── -->
@@ -105,8 +112,9 @@
         <thead>
           <tr>
             <th>#</th>
-            <th>Début (s)</th>
-            <th>Fin (s)</th>
+            <th>Start (s)</th>
+            <th>End (s)</th>
+            <th>Speaker</th>
             <th>Segment</th>
             <th></th>
           </tr>

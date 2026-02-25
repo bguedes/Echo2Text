@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * Stockage JSON pur — aucune dépendance native, compatible Electron sans compilation.
+ * Pure JSON storage — no native dependencies, compatible with Electron without compilation.
  *
- * Structure sur disque :
+ * Disk structure:
  *   <dataDir>/
  *     companies.json     → [{ id, name, description, color, created_at }]
  *     meetings/
@@ -150,6 +150,7 @@ function createMeeting(companyId, title, description = '') {
     questions:        [],
     actions:          [],
     summary:          null,
+    speaker_names:    {},
   };
   writeJSON(meetingPath(id), meeting);
   return { id };
@@ -168,7 +169,7 @@ function deleteMeeting(id) {
 }
 
 // ─── Bulk save (atomic) ───────────────────────────────────────────────────────
-function saveMeetingData(meetingId, { sentences, questions, actions, summary, nextSteps, duration, audioPath }) {
+function saveMeetingData(meetingId, { sentences, questions, actions, summary, nextSteps, duration, audioPath, speakerNames }) {
   const m = readJSON(meetingPath(meetingId), null);
   if (!m) return;
 
@@ -176,10 +177,13 @@ function saveMeetingData(meetingId, { sentences, questions, actions, summary, ne
     id:         nextId(),
     meeting_id: meetingId,
     idx:        i,
-    start_time: s.start ?? 0,
-    end_time:   s.end   ?? 0,
+    start_time: s.start   ?? 0,
+    end_time:   s.end     ?? 0,
     segment:    s.segment ?? '',
+    speaker:    s.speaker ?? null,
   }));
+
+  if (speakerNames !== undefined) m.speaker_names = speakerNames;
 
   m.questions = (questions || []).map((q, i) => ({
     id:         nextId(),
