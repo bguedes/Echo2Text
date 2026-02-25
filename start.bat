@@ -6,10 +6,8 @@ set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
 :: Kill any stale process still holding port 8765
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8765 " 2^>nul') do (
-    echo [start] Releasing port 8765 (PID %%a)...
-    taskkill /F /PID %%a >nul 2>&1
-)
+echo [start] Checking port 8765...
+powershell -NoProfile -Command "Get-Process -Id (Get-NetTCPConnection -LocalPort 8765 -ErrorAction SilentlyContinue).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force" 2>nul
 
 echo [start] Starting Python ASR server...
 
