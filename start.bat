@@ -1,28 +1,28 @@
 @echo off
 setlocal
 
-:: Répertoire du script
+:: Script directory
 set "ROOT=%~dp0"
 set "ROOT=%ROOT:~0,-1%"
 
-echo [start] Démarrage du serveur Python ASR...
+echo [start] Starting Python ASR server...
 
-:: Choisir Python (venv ou système)
+:: Choose Python (venv or system)
 if exist "%ROOT%\venv\Scripts\python.exe" (
     set "PYTHON=%ROOT%\venv\Scripts\python.exe"
 ) else (
     set "PYTHON=python"
 )
 
-:: Lancer server.py en arrière-plan
+:: Launch server.py in the background
 start "Parakeet ASR Server" /B "%PYTHON%" "%ROOT%\server.py"
 
-:: Attendre que le serveur soit prêt (~10s pour le modèle)
-echo [start] Attente de 5 secondes avant de lancer Electron...
+:: Wait for the server to be ready (~10s for model loading)
+echo [start] Waiting 5 seconds before launching Electron...
 timeout /t 5 /nobreak >nul
 
-:: Lancer Electron
-echo [start] Lancement Electron...
+:: Launch Electron
+echo [start] Launching Electron...
 cd /d "%ROOT%\electron"
 npm start
 

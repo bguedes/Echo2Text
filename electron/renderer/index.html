@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self'; media-src 'self' blob:;" />
-  <title>Parakeet – Transcription & Analyse</title>
+  <title>Echo2Text – Transcription & Analysis</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -12,18 +12,18 @@
 
   <!-- ── Header ─────────────────────────────────────────────────────────── -->
   <header>
-    <h1>Parakeet v3 &mdash; Transcription &amp; Analyse temps réel</h1>
+    <h1>Echo2Text &mdash; Transcription &amp; Real Time Analysis</h1>
     <div class="header-right">
       <div class="theme-switcher">
-        <button class="theme-btn active" data-theme="dark"  title="Sombre"></button>
-        <button class="theme-btn"        data-theme="light" title="Clair"></button>
+        <button class="theme-btn active" data-theme="dark"  title="Dark"></button>
+        <button class="theme-btn"        data-theme="light" title="Light"></button>
         <button class="theme-btn"        data-theme="nord"  title="Nord"></button>
-        <button class="theme-btn"        data-theme="sepia" title="Sépia"></button>
+        <button class="theme-btn"        data-theme="sepia" title="Sepia"></button>
       </div>
       <div class="status-bar">
         <div class="status-item">
           <span class="dot" id="dot-server"></span>
-          <span>Serveur ASR</span>
+          <span>ASR Server</span>
         </div>
         <div class="status-item">
           <span class="dot" id="dot-lmstudio"></span>
@@ -31,17 +31,17 @@
         </div>
         <div class="status-item">
           <span class="dot" id="dot-mic"></span>
-          <span>Micro</span>
+          <span>Microphone</span>
         </div>
       </div>
-      <button id="btn-library">&#128193; Bibliothèque</button>
+      <button id="btn-library">&#128193; Library</button>
     </div>
   </header>
 
   <!-- ── Controls ───────────────────────────────────────────────────────── -->
   <div class="controls">
-    <button id="btn-start">&#9654; Démarrer</button>
-    <button id="btn-stop"  disabled>&#9632; Arrêter</button>
+    <button id="btn-start">&#9654; Start</button>
+    <button id="btn-stop"  disabled>&#9632; Stop</button>
     <button id="btn-reset">&#8634; Reset</button>
     <div class="lang-toggle">
       <button class="lang-btn active" data-lang="fr">FR</button>
@@ -49,28 +49,28 @@
     </div>
     <div class="audio-source-group">
       <label for="audio-source-select">&#127908;</label>
-      <select id="audio-source-select"><option value="mic:default">Micro système</option></select>
-      <button id="btn-refresh-sources" title="Rafraîchir">&#8635;</button>
+      <select id="audio-source-select"><option value="mic:default">System microphone</option></select>
+      <button id="btn-refresh-sources" title="Refresh">&#8635;</button>
     </div>
     <div id="url-source-row" class="url-source-row hidden">
-      <input id="url-web-input" type="text" placeholder="https://youtube.com/watch?v=… ou toute URL" />
-      <button id="btn-open-url">&#8599; Ouvrir</button>
-      <button id="btn-close-url">&#10005; Fermer</button>
+      <input id="url-web-input" type="text" placeholder="https://youtube.com/watch?v=… or any URL" />
+      <button id="btn-open-url">&#8599; Open</button>
+      <button id="btn-close-url">&#10005; Close</button>
     </div>
     <input type="file" id="audio-file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none" />
     <div class="url-group">
-      <label for="lmstudio-url">URL LMStudio</label>
+      <label for="lmstudio-url">LMStudio URL</label>
       <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" />
     </div>
   </div>
 
   <!-- ── Meeting context bar ────────────────────────────────────────────── -->
   <div id="meeting-context-bar" class="hidden">
-    <span class="ctx-label">Réunion active :</span>
+    <span class="ctx-label">Active meeting:</span>
     <span id="ctx-company" class="ctx-company"></span>
     <span class="ctx-sep">›</span>
     <span id="ctx-title" class="ctx-title"></span>
-    <button id="btn-change-meeting">Changer</button>
+    <button id="btn-change-meeting">Change</button>
   </div>
 
   <!-- ── Speakers panel ────────────────────────────────────────────────────── -->
@@ -89,11 +89,11 @@
   <!-- ── Q&A ────────────────────────────────────────────────────────────── -->
   <div class="qa-row">
     <div class="card">
-      <div class="card-label">Questions détectées <span class="label-badge">temps réel</span></div>
+      <div class="card-label">Detected questions <span class="label-badge">real-time</span></div>
       <div class="list-box" id="questions-list"></div>
     </div>
     <div class="card">
-      <div class="card-label">Actions à faire <span class="label-badge">fin de réunion</span></div>
+      <div class="card-label">Action items <span class="label-badge">end of meeting</span></div>
       <div class="list-box" id="actions-list"></div>
     </div>
   </div>
@@ -112,7 +112,7 @@
 
   <!-- ── Timestamps table ───────────────────────────────────────────────── -->
   <div class="card" id="timestamps-card" style="flex: 1; min-height: 0;">
-    <div class="card-label">Horodatages par phrase</div>
+    <div class="card-label">Timestamped segments</div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -137,7 +137,7 @@
   <div id="library-panel">
     <div id="lib-companies-col">
       <div class="lib-col-header">
-        <span>Entreprises</span>
+        <span>Companies</span>
         <button id="btn-new-company" class="btn-icon">+</button>
       </div>
       <div id="lib-companies-list"></div>
@@ -146,13 +146,13 @@
       <div id="lib-meetings-pane" class="hidden">
         <div class="lib-col-header">
           <span id="lib-company-name-title"></span>
-          <button id="btn-new-meeting-from-lib" class="btn-sm">+ Nouvelle réunion</button>
+          <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
         </div>
         <div id="lib-meetings-list"></div>
       </div>
       <div id="lib-meeting-detail" class="hidden"></div>
       <div id="lib-empty-hint">
-        <p>Sélectionnez une entreprise pour voir ses réunions.</p>
+        <p>Select a company to view its meetings.</p>
       </div>
     </div>
   </div>
@@ -163,31 +163,31 @@
 <div id="meeting-setup-modal" class="hidden">
   <div class="modal-backdrop"></div>
   <div class="modal-card">
-    <h2>Nouvelle réunion</h2>
+    <h2>New meeting</h2>
     <div class="modal-field">
-      <label>Entreprise</label>
+      <label>Company</label>
       <div class="modal-row">
         <select id="modal-company-select"></select>
-        <button id="modal-btn-new-company" class="btn-sm">+ Nouvelle</button>
+        <button id="modal-btn-new-company" class="btn-sm">+ New</button>
       </div>
     </div>
     <div id="modal-new-company-form" class="hidden">
       <div class="modal-field">
-        <label>Nom de l'entreprise</label>
-        <input id="modal-new-company-name" type="text" placeholder="Ex : ACME Corp" />
+        <label>Company name</label>
+        <input id="modal-new-company-name" type="text" placeholder="e.g. ACME Corp" />
       </div>
     </div>
     <div class="modal-field">
-      <label>Titre de la réunion</label>
-      <input id="modal-title" type="text" placeholder="Ex : Réunion kick-off Q2" />
+      <label>Meeting title</label>
+      <input id="modal-title" type="text" placeholder="e.g. Q2 kick-off meeting" />
     </div>
     <div class="modal-field">
-      <label>Description <span class="muted-label">(optionnel)</span></label>
-      <textarea id="modal-desc" placeholder="Contexte, ordre du jour…" rows="3"></textarea>
+      <label>Description <span class="muted-label">(optional)</span></label>
+      <textarea id="modal-desc" placeholder="Context, agenda…" rows="3"></textarea>
     </div>
     <div class="modal-actions">
-      <button id="modal-btn-cancel">Annuler</button>
-      <button id="modal-btn-confirm" class="btn-primary">&#9654; Démarrer</button>
+      <button id="modal-btn-cancel">Cancel</button>
+      <button id="modal-btn-confirm" class="btn-primary">&#9654; Start</button>
     </div>
   </div>
 </div>

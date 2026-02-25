@@ -7,7 +7,7 @@ const POLL_INTERVAL = 2000;
 const BUFFER_SIZE   = 4096;
 const VAD_THRESHOLD = 0.004;  // RMS below which the chunk is ignored (silence)
 
-// ─── Prompts FR ───────────────────────────────────────────────────────────────
+// ─── LLM Prompts — French (used when lang = FR) ───────────────────────────────
 const SYSTEM_PROMPT_QUESTIONS = `Tu es un assistant d'analyse de réunion en temps réel.
 Tu reçois les fragments successifs d'une transcription audio en cours.
 
