@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self'; media-src 'self' blob:;" />
+  <title>Parakeet – Transcription & Analyse</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ─────────────────────────────────────────────────────────── -->
+  <header>
+    <h1>Parakeet v3 &mdash; Transcription &amp; Analyse temps réel</h1>
+    <div class="header-right">
+      <div class="theme-switcher">
+        <button class="theme-btn active" data-theme="dark"  title="Sombre"></button>
+        <button class="theme-btn"        data-theme="light" title="Clair"></button>
+        <button class="theme-btn"        data-theme="nord"  title="Nord"></button>
+        <button class="theme-btn"        data-theme="sepia" title="Sépia"></button>
+      </div>
+      <div class="status-bar">
+        <div class="status-item">
+          <span class="dot" id="dot-server"></span>
+          <span>Serveur ASR</span>
+        </div>
+        <div class="status-item">
+          <span class="dot" id="dot-lmstudio"></span>
+          <span>LMStudio</span>
+        </div>
+        <div class="status-item">
+          <span class="dot" id="dot-mic"></span>
+          <span>Micro</span>
+        </div>
+      </div>
+      <button id="btn-library">&#128193; Bibliothèque</button>
+    </div>
+  </header>
+
+  <!-- ── Controls ───────────────────────────────────────────────────────── -->
+  <div class="controls">
+    <button id="btn-start">&#9654; Démarrer</button>
+    <button id="btn-stop"  disabled>&#9632; Arrêter</button>
+    <button id="btn-reset">&#8634; Reset</button>
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="fr">FR</button>
+      <button class="lang-btn"        data-lang="en">EN</button>
+    </div>
+    <div class="audio-source-group">
+      <label for="audio-source-select">&#127908;</label>
+      <select id="audio-source-select"><option value="mic:default">Micro système</option></select>
+      <button id="btn-refresh-sources" title="Rafraîchir">&#8635;</button>
+    </div>
+    <div id="url-source-row" class="url-source-row hidden">
+      <input id="url-web-input" type="text" placeholder="https://youtube.com/watch?v=… ou toute URL" />
+      <button id="btn-open-url">&#8599; Ouvrir</button>
+      <button id="btn-close-url">&#10005; Fermer</button>
+    </div>
+    <input type="file" id="audio-file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none" />
+    <div class="url-group">
+      <label for="lmstudio-url">URL LMStudio</label>
+      <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" />
+    </div>
+  </div>
+
+  <!-- ── Meeting context bar ────────────────────────────────────────────── -->
+  <div id="meeting-context-bar" class="hidden">
+    <span class="ctx-label">Réunion active :</span>
+    <span id="ctx-company" class="ctx-company"></span>
+    <span class="ctx-sep">›</span>
+    <span id="ctx-title" class="ctx-title"></span>
+    <button id="btn-change-meeting">Changer</button>
+  </div>
+
+  <!-- ── Transcription ───────────────────────────────────────────────────── -->
+  <div class="card" id="live-text" style="flex: 0 0 120px;">
+    <div class="card-label">Transcription en direct</div>
+    <textarea id="transcript-area" readonly placeholder="Commencez à parler…"></textarea>
+  </div>
+
+  <!-- ── Q&A ────────────────────────────────────────────────────────────── -->
+  <div class="qa-row">
+    <div class="card">
+      <div class="card-label">Questions détectées <span class="label-badge">temps réel</span></div>
+      <div class="list-box" id="questions-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-label">Actions à faire <span class="label-badge">fin de réunion</span></div>
+      <div class="list-box" id="actions-list"></div>
+    </div>
+  </div>
+
+  <!-- ── Export ─────────────────────────────────────────────────────────── -->
+  <div class="export-row">
+    <button id="btn-csv" disabled>&#8595; CSV</button>
+    <button id="btn-srt" disabled>&#8595; SRT</button>
+  </div>
+
+  <!-- ── Timestamps table ───────────────────────────────────────────────── -->
+  <div class="card" id="timestamps-card" style="flex: 1; min-height: 0;">
+    <div class="card-label">Horodatages par phrase</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Début (s)</th>
+            <th>Fin (s)</th>
+            <th>Segment</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="timestamps-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Library overlay ────────────────────────────────────────────────────── -->
+<div id="library-overlay" class="hidden">
+  <div id="library-panel">
+    <div id="lib-companies-col">
+      <div class="lib-col-header">
+        <span>Entreprises</span>
+        <button id="btn-new-company" class="btn-icon">+</button>
+      </div>
+      <div id="lib-companies-list"></div>
+    </div>
+    <div id="lib-content-col">
+      <div id="lib-meetings-pane" class="hidden">
+        <div class="lib-col-header">
+          <span id="lib-company-name-title"></span>
+          <button id="btn-new-meeting-from-lib" class="btn-sm">+ Nouvelle réunion</button>
+        </div>
+        <div id="lib-meetings-list"></div>
+      </div>
+      <div id="lib-meeting-detail" class="hidden"></div>
+      <div id="lib-empty-hint">
+        <p>Sélectionnez une entreprise pour voir ses réunions.</p>
+      </div>
+    </div>
+  </div>
+  <button id="btn-close-library" class="btn-close-overlay">&#10005;</button>
+</div>
+
+<!-- ── Meeting setup modal ────────────────────────────────────────────────── -->
+<div id="meeting-setup-modal" class="hidden">
+  <div class="modal-backdrop"></div>
+  <div class="modal-card">
+    <h2>Nouvelle réunion</h2>
+    <div class="modal-field">
+      <label>Entreprise</label>
+      <div class="modal-row">
+        <select id="modal-company-select"></select>
+        <button id="modal-btn-new-company" class="btn-sm">+ Nouvelle</button>
+      </div>
+    </div>
+    <div id="modal-new-company-form" class="hidden">
+      <div class="modal-field">
+        <label>Nom de l'entreprise</label>
+        <input id="modal-new-company-name" type="text" placeholder="Ex : ACME Corp" />
+      </div>
+    </div>
+    <div class="modal-field">
+      <label>Titre de la réunion</label>
+      <input id="modal-title" type="text" placeholder="Ex : Réunion kick-off Q2" />
+    </div>
+    <div class="modal-field">
+      <label>Description <span class="muted-label">(optionnel)</span></label>
+      <textarea id="modal-desc" placeholder="Contexte, ordre du jour…" rows="3"></textarea>
+    </div>
+    <div class="modal-actions">
+      <button id="modal-btn-cancel">Annuler</button>
+      <button id="modal-btn-confirm" class="btn-primary">&#9654; Démarrer</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="library.js"></script>
+</body>
+</html>
