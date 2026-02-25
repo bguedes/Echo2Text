@@ -5,7 +5,7 @@ const WS_URL        = 'ws://127.0.0.1:8765/ws/transcribe';
 const HEALTH_URL    = 'http://127.0.0.1:8765/health';
 const POLL_INTERVAL = 2000;
 const BUFFER_SIZE   = 4096;
-const VAD_THRESHOLD = 0.004;  // RMS en dessous duquel le chunk est ignoré (silence)
+const VAD_THRESHOLD = 0.004;  // RMS below which the chunk is ignored (silence)
 
 // ─── Prompts FR ───────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT_QUESTIONS = `Tu es un assistant d'analyse de réunion en temps réel.
@@ -97,13 +97,13 @@ Produce a summary in strict JSON (no markdown):
 {"summary":"summary in 3-5 sentences","next_steps":"decisions and next steps"}
 Reply ONLY with the JSON.`;
 
-// ─── Getters de prompts (dynamiques selon la langue) ─────────────────────────
+// ─── Prompt getters (dynamic by language) ────────────────────────────────────
 function promptQuestions() { return language === 'fr' ? SYSTEM_PROMPT_QUESTIONS : SYSTEM_PROMPT_QUESTIONS_EN; }
 function promptAnswer()    { return language === 'fr' ? SYSTEM_PROMPT_ANSWER    : SYSTEM_PROMPT_ANSWER_EN; }
 function promptActions()   { return language === 'fr' ? SYSTEM_PROMPT_ACTIONS   : SYSTEM_PROMPT_ACTIONS_EN; }
 function promptSummary()   { return language === 'fr' ? SYSTEM_PROMPT_SUMMARY   : SYSTEM_PROMPT_SUMMARY_EN; }
 
-// ─── État global ──────────────────────────────────────────────────────────────
+// ─── Global state ─────────────────────────────────────────────────────────────
 let ws          = null;
 let audioCtx    = null;
 let mediaStream = null;
@@ -113,26 +113,27 @@ let language    = 'fr';  // 'fr' | 'en'
 
 let allSentences = [];
 let lastSentIdx  = 0;
+let speakerNames = {};  // { "SPEAKER_0": "Alice", "SPEAKER_1": "Bob" }
 
-// Questions : [{ text, answer, answering }]
+// Questions: [{ text, answer, answering }]
 let questions = [];
-// Actions : [string] — détectées en fin de réunion
+// Actions: [string] — detected at the end of a meeting
 let actions   = [];
 
-// LLM — détection questions (temps réel, avec historique)
+// LLM — real-time question detection (with history)
 let llmHistoryQ = [{ role: 'system', content: promptQuestions() }];
 let llmQueueQ   = [];
 let llmBusyQ    = false;
 
-// LLM — réponses aux questions (sans historique, one-shot par question)
+// LLM — question answers (no history, one-shot per question)
 let llmQueueAns = [];
 let llmBusyAns  = false;
 
-// LLM — connexion
+// LLM — connection
 let llmModelId   = 'local-model';
 let llmConnected = false;
 
-// ─── État réunion courante ────────────────────────────────────────────────────
+// ─── Current meeting state ────────────────────────────────────────────────────
 let currentMeetingId    = null;
 let currentCompanyName  = '';
 let currentMeetingTitle = '';
@@ -143,7 +144,7 @@ let savedAudioPath      = '';
 let summaryText         = '';
 let nextStepsText       = '';
 
-// ─── Éléments DOM ─────────────────────────────────────────────────────────────
+// ─── DOM elements ─────────────────────────────────────────────────────────────
 const dotServer     = document.getElementById('dot-server');
 const dotLm         = document.getElementById('dot-lmstudio');
 const dotMic        = document.getElementById('dot-mic');
@@ -162,7 +163,7 @@ const ctxCompany    = document.getElementById('ctx-company');
 const ctxTitle      = document.getElementById('ctx-title');
 const btnChangeMeeting = document.getElementById('btn-change-meeting');
 
-// ─── Polling serveur / LMStudio ───────────────────────────────────────────────
+// ─── Server / LMStudio polling ────────────────────────────────────────────────
 let serverReady = false;
 
 async function pollServer() {
@@ -219,11 +220,12 @@ function connectWS() {
   ws.onerror = (e) => console.error('[ws]', e);
 }
 
-// ─── Gestion transcription ────────────────────────────────────────────────────
+// ─── Transcript handling ──────────────────────────────────────────────────────
 function handleTranscript(msg) {
   allSentences = msg.sentences || [];
   transcriptEl.value = msg.fullText || '';
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  renderTranscriptDisplay();
+  renderSpeakersPanel();
   renderTimestamps();
   maybeTriggerQuestions();
 
@@ -231,19 +233,101 @@ function handleTranscript(msg) {
     setDot(dotMic, 'red');
     btnCsv.disabled = allSentences.length === 0;
     btnSrt.disabled = allSentences.length === 0;
-    detectActions(msg.fullText || '').then(() => {
+    const speakerText = buildSpeakerText(allSentences) || msg.fullText || '';
+    detectActions(speakerText).then(() => {
       if (currentMeetingId !== null) {
-        generateSummary(msg.fullText || '').then(() => autoSave());
+        generateSummary(speakerText).then(() => autoSave());
       }
     });
   }
+}
+
+function renderTranscriptDisplay() {
+  const div = document.getElementById('transcript-display');
+  if (!div) return;
+  div.innerHTML = '';
+  let lastSpk = null, group = null;
+  allSentences.forEach(s => {
+    const spk = s.speaker || '__none__';
+    if (spk !== lastSpk) {
+      group = document.createElement('div');
+      group.className = 'speaker-turn';
+      if (s.speaker) {
+        const badge = document.createElement('div');
+        badge.className = `speaker-badge spk-color-${getSpeakerIndex(s.speaker) % 6}`;
+        badge.textContent = getDisplayName(s.speaker);
+        group.appendChild(badge);
+      }
+      div.appendChild(group);
+      lastSpk = spk;
+    }
+    const span = document.createElement('span');
+    span.className = 'speaker-segment';
+    span.textContent = s.segment + ' ';
+    group.appendChild(span);
+  });
+  div.scrollTop = div.scrollHeight;
+}
+
+function renderSpeakersPanel() {
+  const detected = [...new Set(allSentences.map(s => s.speaker).filter(Boolean))];
+  const panel = document.getElementById('speakers-panel');
+  if (!panel) return;
+  if (!detected.length) { panel.classList.add('hidden'); return; }
+  panel.classList.remove('hidden');
+  panel.querySelector('#speakers-list').innerHTML = detected.map(spk => `
+    <div class="speaker-row">
+      <span class="speaker-badge spk-color-${getSpeakerIndex(spk) % 6}">${toFriendlyLabel(spk)}</span>
+      <input class="speaker-name-input" data-spk="${spk}" type="text"
+        placeholder="${toFriendlyLabel(spk)}" value="${escHtml(speakerNames[spk] || '')}" />
+    </div>
+  `).join('');
+  panel.querySelectorAll('.speaker-name-input').forEach(inp => {
+    inp.addEventListener('input', () => {
+      const val = inp.value.trim();
+      if (val) speakerNames[inp.dataset.spk] = val;
+      else delete speakerNames[inp.dataset.spk];
+      renderTranscriptDisplay();
+      renderTimestamps();
+    });
+  });
+}
+
+// ─── Speaker helpers ──────────────────────────────────────────────────────────
+function toFriendlyLabel(id) {
+  const n = parseInt(id.replace('SPEAKER_', ''), 10);
+  return `Speaker ${n + 1}`;
+}
+function getDisplayName(id) {
+  if (!id) return null;
+  return speakerNames[id] || toFriendlyLabel(id);
+}
+function getSpeakerIndex(id) {
+  return parseInt(id.replace('SPEAKER_', ''), 10) || 0;
+}
+
+function buildSpeakerText(sentences) {
+  let out = '', lastSpk = null;
+  for (const s of sentences) {
+    const name = s.speaker ? getDisplayName(s.speaker) : null;
+    if (name && name !== lastSpk) { out += `\n[${name}]: `; lastSpk = name; }
+    out += s.segment + ' ';
+  }
+  return out.trim();
 }
 
 function renderTimestamps() {
   tsBody.innerHTML = '';
   allSentences.forEach((s, i) => {
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${i + 1}</td><td>${s.start}</td><td>${s.end}</td><td>${escHtml(s.segment)}</td><td><button class="btn-delete-row" data-idx="${i}" title="Supprimer">&#10005;</button></td>`;
+    tr.innerHTML = `
+      <td>${i + 1}</td><td>${s.start}</td><td>${s.end}</td>
+      <td>${s.speaker
+        ? `<span class="speaker-badge spk-color-${getSpeakerIndex(s.speaker) % 6}">${escHtml(getDisplayName(s.speaker))}</span>`
+        : '—'}</td>
+      <td>${escHtml(s.segment)}</td>
+      <td><button class="btn-delete-row" data-idx="${i}">&#10005;</button></td>
+    `;
     tsBody.appendChild(tr);
   });
   tsBody.querySelectorAll('.btn-delete-row').forEach(btn => {
@@ -259,11 +343,11 @@ function renderTimestamps() {
   });
 }
 
-// ─── LLM — Détection questions (temps réel) ───────────────────────────────────
+// ─── LLM — Real-time question detection ──────────────────────────────────────
 function maybeTriggerQuestions() {
   const newSents = allSentences.slice(lastSentIdx);
   if (!newSents.length) return;
-  const fragment = newSents.map(s => s.segment).join(' ');
+  const fragment = buildSpeakerText(newSents) || newSents.map(s => s.segment).join(' ');
   lastSentIdx = allSentences.length;
   llmQueueQ.push(fragment);
   processQuestionQueue();
@@ -314,7 +398,7 @@ async function processQuestionQueue() {
   if (llmQueueQ.length > 0) processQuestionQueue();
 }
 
-// ─── LLM — Réponses aux questions ────────────────────────────────────────────
+// ─── LLM — Question answers ───────────────────────────────────────────────────
 async function processAnswerQueue() {
   if (llmBusyAns || llmQueueAns.length === 0) return;
   llmBusyAns = true;
@@ -346,7 +430,7 @@ async function processAnswerQueue() {
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    // Streaming progressif — la réponse s'affiche token par token
+    // Progressive streaming — response displays token by token
     const reader  = resp.body.getReader();
     const decoder = new TextDecoder();
     let sseBuf = '';
@@ -381,16 +465,16 @@ async function processAnswerQueue() {
   if (llmQueueAns.length > 0) processAnswerQueue();
 }
 
-// ─── LLM — Détection actions (fin de réunion) ─────────────────────────────────
+// ─── LLM — Action detection (end of meeting) ──────────────────────────────────
 async function detectActions(fullText) {
   if (!fullText.trim()) return;
 
-  actionsList.innerHTML = '<div class="detecting">Analyse des actions en cours…</div>';
+  actionsList.innerHTML = '<div class="detecting">Analyzing actions…</div>';
 
   try {
     await checkLmStudio();
     if (!llmConnected) {
-      actionsList.innerHTML = '<div class="detecting muted">LMStudio non disponible</div>';
+      actionsList.innerHTML = '<div class="detecting muted">LMStudio unavailable</div>';
       return;
     }
 
@@ -421,26 +505,26 @@ async function detectActions(fullText) {
     });
 
     if (actions.length === 0) {
-      actionsList.innerHTML = '<div class="detecting muted">Aucune action détectée</div>';
+      actionsList.innerHTML = '<div class="detecting muted">No actions detected</div>';
     }
   } catch (e) {
     console.error('[llm-actions]', e);
-    actionsList.innerHTML = '<div class="detecting muted">Erreur d\'analyse</div>';
+    actionsList.innerHTML = '<div class="detecting muted">Analysis error</div>';
   }
 }
 
-// ─── LLM — Génération synthèse (fin de réunion, one-shot) ────────────────────
+// ─── LLM — Summary generation (end of meeting, one-shot) ─────────────────────
 async function generateSummary(fullText) {
   if (!fullText.trim() || !llmConnected) return;
 
   const qSummary = questions.map((q, i) =>
-    `Q${i + 1}: ${q.text}\nR: ${q.answer || '(sans réponse)'}`
+    `Q${i + 1}: ${q.text}\nA: ${q.answer || '(no answer)'}`
   ).join('\n');
   const aSummary = actions.map((a, i) => `${i + 1}. ${a}`).join('\n');
 
   const userContent = [
     'TRANSCRIPTION:\n' + fullText,
-    qSummary ? 'QUESTIONS/RÉPONSES:\n' + qSummary : '',
+    qSummary ? 'QUESTIONS/ANSWERS:\n' + qSummary : '',
     aSummary ? 'ACTIONS:\n' + aSummary : '',
   ].filter(Boolean).join('\n\n');
 
@@ -463,7 +547,7 @@ async function generateSummary(fullText) {
 
     const j   = await resp.json();
     const raw = j.choices?.[0]?.message?.content ?? '';
-    // Extraire le JSON brut (au cas où le modèle ajoute du texte autour)
+    // Extract raw JSON (in case the model wraps it with extra text)
     const match = raw.match(/\{[\s\S]*\}/);
     if (match) {
       const parsed  = JSON.parse(match[0]);
@@ -475,28 +559,29 @@ async function generateSummary(fullText) {
   }
 }
 
-// ─── Auto-save en DB ──────────────────────────────────────────────────────────
+// ─── Auto-save to DB ──────────────────────────────────────────────────────────
 async function autoSave() {
   if (currentMeetingId === null) return;
   const duration = recordingStartTime ? (Date.now() - recordingStartTime) / 1000 : 0;
 
   try {
     await window.electronAPI.db.saveMeetingData(currentMeetingId, {
-      sentences: allSentences,
-      questions: questions.map(q => ({ text: q.text, answer: q.answer || '' })),
+      sentences:    allSentences,
+      questions:    questions.map(q => ({ text: q.text, answer: q.answer || '' })),
       actions,
-      summary:   summaryText,
-      nextSteps: nextStepsText,
+      summary:      summaryText,
+      nextSteps:    nextStepsText,
       duration,
-      audioPath: savedAudioPath,
+      audioPath:    savedAudioPath,
+      speakerNames,
     });
-    showNotification('Réunion sauvegardée ✓');
+    showNotification('Meeting saved ✓');
   } catch (e) {
     console.error('[autoSave]', e);
   }
 }
 
-// ─── Notification toast ───────────────────────────────────────────────────────
+// ─── Toast notification ───────────────────────────────────────────────────────
 function showNotification(msg) {
   let el = document.getElementById('toast-notification');
   if (!el) {
@@ -509,7 +594,7 @@ function showNotification(msg) {
   setTimeout(() => el.classList.remove('visible'), 3000);
 }
 
-// ─── Helper SSE streaming ─────────────────────────────────────────────────────
+// ─── SSE streaming helper ─────────────────────────────────────────────────────
 async function streamSSE(resp, onLine) {
   const reader  = resp.body.getReader();
   const decoder = new TextDecoder();
@@ -544,7 +629,7 @@ async function streamSSE(resp, onLine) {
   return { fullResponse };
 }
 
-// ─── Rendu UI ─────────────────────────────────────────────────────────────────
+// ─── UI rendering ─────────────────────────────────────────────────────────────
 function renderQuestions() {
   if (questions.length === 0) { questionsList.innerHTML = ''; return; }
   questionsList.innerHTML = questions.map((q, i) => `
@@ -552,10 +637,10 @@ function renderQuestions() {
       <div class="qa-question">
         <span class="list-idx">${i + 1}</span>
         <span>${escHtml(q.text)}</span>
-        <button class="btn-delete-item" data-idx="${i}" title="Supprimer">&#10005;</button>
+        <button class="btn-delete-item" data-idx="${i}" title="Delete">&#10005;</button>
       </div>
       ${q.answering && !q.answer
-        ? '<div class="qa-answer answering">Génération de la réponse…</div>'
+        ? '<div class="qa-answer answering">Generating answer…</div>'
         : q.answer
           ? `<div class="qa-answer">${escHtml(q.answer)}</div>`
           : ''
@@ -576,7 +661,7 @@ function renderActions() {
     <div class="list-item">
       <span class="list-idx">${i + 1}</span>
       <span>${escHtml(t)}</span>
-      <button class="btn-delete-item" data-idx="${i}" title="Supprimer">&#10005;</button>
+      <button class="btn-delete-item" data-idx="${i}" title="Delete">&#10005;</button>
     </div>
   `).join('');
   actionsList.querySelectorAll('.btn-delete-item').forEach(btn => {
@@ -588,7 +673,7 @@ function renderActions() {
   });
 }
 
-// ─── Sources audio ────────────────────────────────────────────────────────────
+// ─── Audio sources ────────────────────────────────────────────────────────────
 async function loadAudioSources() {
   const sel = document.getElementById('audio-source-select');
   if (!sel) return;
@@ -601,30 +686,30 @@ async function loadAudioSources() {
     const devices = (await navigator.mediaDevices.enumerateDevices())
       .filter(d => d.kind === 'audioinput');
     if (!devices.length) {
-      grpMic.appendChild(new Option('Micro système', 'mic:default'));
+      grpMic.appendChild(new Option('System microphone', 'mic:default'));
     } else {
       devices.forEach((d, i) =>
-        grpMic.appendChild(new Option(d.label || `Micro ${i + 1}`, `mic:${d.deviceId}`)));
+        grpMic.appendChild(new Option(d.label || `Mic ${i + 1}`, `mic:${d.deviceId}`)));
     }
   } catch (_) {
-    grpMic.appendChild(new Option('Micro système', 'mic:default'));
+    grpMic.appendChild(new Option('System microphone', 'mic:default'));
   }
   sel.appendChild(grpMic);
 
   if (window.electronAPI?.desktopCapturer) {
     const grpSys = document.createElement('optgroup');
-    grpSys.label = 'Réunions en ligne';
-    grpSys.appendChild(new Option('🖥️ Audio système (Zoom, Teams, Meet…)', 'system'));
+    grpSys.label = 'Online meetings';
+    grpSys.appendChild(new Option('🖥️ System audio (Zoom, Teams, Meet…)', 'system'));
     sel.appendChild(grpSys);
   }
 
   const grpOther = document.createElement('optgroup');
-  grpOther.label = 'Autres sources';
-  grpOther.appendChild(new Option('🌐 YouTube / URL Web', 'url'));
-  grpOther.appendChild(new Option('📁 Fichier audio (wav, mp3, mp4, ogg…)', 'file'));
+  grpOther.label = 'Other sources';
+  grpOther.appendChild(new Option('🌐 YouTube / Web URL', 'url'));
+  grpOther.appendChild(new Option('📁 Audio file (wav, mp3, mp4, ogg…)', 'file'));
   sel.appendChild(grpOther);
 
-  // Rétablir la sélection précédente si encore disponible
+  // Restore previous selection if still available
   if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
 
@@ -640,7 +725,7 @@ async function getAudioStream() {
       video: { mandatory: { chromeMediaSource: 'desktop', chromeMediaSourceId: src.id,
                             maxWidth: 1, maxHeight: 1 } },
     });
-    stream.getVideoTracks().forEach(t => t.stop()); // supprimer la piste vidéo
+    stream.getVideoTracks().forEach(t => t.stop()); // drop the video track
     return stream;
   }
 
@@ -652,12 +737,12 @@ async function getAudioStream() {
   );
 }
 
-// ─── Transcription depuis un fichier audio ────────────────────────────────────
+// ─── File audio transcription ─────────────────────────────────────────────────
 async function startFileTranscription(file) {
   setDot(dotMic, 'orange');
-  transcriptEl.value = '⏳ Décodage du fichier audio…';
+  transcriptEl.value = '⏳ Decoding audio file…';
 
-  // 1. Décoder le fichier
+  // 1. Decode the file
   let pcmData;
   try {
     const buf = await file.arrayBuffer();
@@ -665,7 +750,7 @@ async function startFileTranscription(file) {
     const decoded   = await decodeCtx.decodeAudioData(buf);
     await decodeCtx.close();
 
-    // Rééchantillonner à 16 000 Hz mono (OfflineAudioContext)
+    // Resample to 16 000 Hz mono (OfflineAudioContext)
     const SR      = 16000;
     const offCtx  = new OfflineAudioContext(1, Math.ceil(decoded.duration * SR), SR);
     const bufSrc  = offCtx.createBufferSource();
@@ -673,19 +758,19 @@ async function startFileTranscription(file) {
     bufSrc.connect(offCtx.destination);
     bufSrc.start(0);
     const resampled = await offCtx.startRendering();
-    pcmData = resampled.getChannelData(0); // Float32Array à 16 kHz
+    pcmData = resampled.getChannelData(0); // Float32Array at 16 kHz
     transcriptEl.value = '';
   } catch (e) {
-    alert('Impossible de décoder ce fichier audio : ' + e.message);
+    alert('Unable to decode audio file: ' + e.message);
     setDot(dotMic, 'red');
     return;
   }
 
-  // 2. S'assurer que le WS est connecté
+  // 2. Ensure WebSocket is connected
   if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
     connectWS();
   }
-  // Attendre max 5 s que le WS soit prêt
+  // Wait up to 5s for WS to be ready
   const wsReady = await new Promise(resolve => {
     if (ws && ws.readyState === WebSocket.OPEN) { resolve(true); return; }
     let elapsed = 0;
@@ -696,15 +781,15 @@ async function startFileTranscription(file) {
     }, 50);
   });
   if (!wsReady) {
-    alert('Serveur ASR non disponible.');
+    alert('ASR server unavailable.');
     setDot(dotMic, 'red');
     return;
   }
 
-  // 3. Envoyer la config (au cas où le WS était déjà ouvert)
+  // 3. Send config (in case WS was already open)
   ws.send(JSON.stringify({ type: 'config', sampleRate: 16000 }));
 
-  // 4. Initialiser l'état d'enregistrement
+  // 4. Initialize recording state
   recording          = true;
   recordingStartTime = Date.now();
   savedAudioPath     = '';
@@ -716,18 +801,18 @@ async function startFileTranscription(file) {
   btnCsv.disabled    = true;
   btnSrt.disabled    = true;
 
-  // 5. Streamer les chunks PCM vers le WS (≈ 32× temps réel)
+  // 5. Stream PCM chunks to WS (≈ 32× real-time)
   const CHUNK = 4096;
   for (let i = 0; i < pcmData.length; i += CHUNK) {
     if (!recording) break;
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(pcmData.slice(i, i + CHUNK).buffer);
     }
-    // Céder au event-loop toutes les 100 chunks (pour garder l'UI réactive)
+    // Yield to event loop every 100 chunks (keeps UI responsive)
     if (((i / CHUNK) % 100) === 0) await new Promise(r => setTimeout(r, 0));
   }
 
-  // 6. Signaler la fin au serveur
+  // 6. Signal end to server
   if (recording && ws && ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'stop' }));
   }
@@ -740,17 +825,17 @@ async function startFileTranscription(file) {
 // ─── Audio capture ────────────────────────────────────────────────────────────
 async function startRecording() {
   if (!serverReady) {
-    alert('Le serveur ASR n\'est pas encore prêt. Attendez le point vert "Serveur ASR".');
+    alert('ASR server is not ready yet. Wait for the green "ASR Server" dot.');
     return;
   }
 
-  // Si pas de réunion active, ouvrir le modal setup
+  // If no active meeting, open the setup modal
   if (currentMeetingId === null) {
     openMeetingSetup();
     return;
   }
 
-  // Source = fichier audio → déclencher le sélecteur de fichier
+  // Source is an audio file → trigger the file picker
   const sourceVal = document.getElementById('audio-source-select')?.value || 'mic:default';
   if (sourceVal === 'file') {
     document.getElementById('audio-file-input').click();
@@ -759,9 +844,9 @@ async function startRecording() {
 
   try {
     mediaStream = await getAudioStream();
-    await loadAudioSources(); // refresh labels après permission accordée
+    await loadAudioSources(); // refresh labels after permission granted
   } catch (e) {
-    alert('Accès audio refusé : ' + e.message);
+    alert('Audio access denied: ' + e.message);
     return;
   }
 
@@ -856,6 +941,7 @@ function resetAll() {
 
   allSentences = [];
   lastSentIdx  = 0;
+  speakerNames = {};
   questions    = [];
   actions      = [];
   llmHistoryQ  = [{ role: 'system', content: promptQuestions() }];
@@ -865,6 +951,10 @@ function resetAll() {
   llmBusyAns   = false;
 
   transcriptEl.value      = '';
+  const tDisplay = document.getElementById('transcript-display');
+  if (tDisplay) tDisplay.innerHTML = '';
+  const sPanel = document.getElementById('speakers-panel');
+  if (sPanel) sPanel.classList.add('hidden');
   questionsList.innerHTML = '';
   actionsList.innerHTML   = '';
   tsBody.innerHTML        = '';
@@ -873,7 +963,7 @@ function resetAll() {
   setDot(dotMic, 'red');
 }
 
-// ─── Gestion contexte réunion ─────────────────────────────────────────────────
+// ─── Meeting context management ───────────────────────────────────────────────
 function setCurrentMeeting(meetingId, companyName, meetingTitle) {
   currentMeetingId    = meetingId;
   currentCompanyName  = companyName;
@@ -883,7 +973,7 @@ function setCurrentMeeting(meetingId, companyName, meetingTitle) {
   meetingCtxBar.classList.remove('hidden');
 }
 
-// Exposé pour library.js
+// Exposed for library.js
 window._appSetCurrentMeeting = setCurrentMeeting;
 window._appStartRecording    = startRecording;
 
@@ -942,7 +1032,7 @@ function escHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// ─── Événements ───────────────────────────────────────────────────────────────
+// ─── Events ───────────────────────────────────────────────────────────────────
 btnStart.addEventListener('click', startRecording);
 btnStop.addEventListener ('click', stopRecording);
 btnReset.addEventListener('click', resetAll);
@@ -968,29 +1058,29 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     language = btn.dataset.lang;
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
-    llmHistoryQ = [{ role: 'system', content: promptQuestions() }]; // reset historique
+    llmHistoryQ = [{ role: 'system', content: promptQuestions() }]; // reset history
   });
 });
 
 document.getElementById('btn-refresh-sources').addEventListener('click', loadAudioSources);
 
-// Afficher/masquer la ligne URL quand la source "url" est sélectionnée
+// Show/hide the URL row when the "url" source is selected
 document.getElementById('audio-source-select').addEventListener('change', (e) => {
   document.getElementById('url-source-row')
     .classList.toggle('hidden', e.target.value !== 'url');
 });
 
-// Ouvrir l'URL dans une BrowserWindow + basculer sur audio système
+// Open URL in a BrowserWindow + switch to system audio
 document.getElementById('btn-open-url').addEventListener('click', async () => {
   const raw = document.getElementById('url-web-input').value.trim();
   if (!raw) return;
   let url = raw;
   if (!/^https?:\/\//i.test(url)) url = 'https://' + url;
-  try { new URL(url); } catch { alert('URL invalide.'); return; }
+  try { new URL(url); } catch { alert('Invalid URL.'); return; }
 
   if (window.electronAPI?.webview) {
     await window.electronAPI.webview.open(url);
-    // Basculer automatiquement vers l'audio système
+    // Automatically switch to system audio
     const sel = document.getElementById('audio-source-select');
     if ([...sel.options].some(o => o.value === 'system')) {
       sel.value = 'system';
@@ -1001,7 +1091,7 @@ document.getElementById('btn-open-url').addEventListener('click', async () => {
   }
 });
 
-// Fermer la fenêtre URL
+// Close the URL window
 document.getElementById('btn-close-url').addEventListener('click', () => {
   if (window.electronAPI?.webview) window.electronAPI.webview.close();
   document.getElementById('url-source-row').classList.add('hidden');
@@ -1009,26 +1099,26 @@ document.getElementById('btn-close-url').addEventListener('click', () => {
   sel.value = sel.options[0]?.value || 'mic:default';
 });
 
-// Fichier audio sélectionné → lancer la transcription
+// Audio file selected → start transcription
 document.getElementById('audio-file-input').addEventListener('change', async (e) => {
   const file = e.target.files[0];
-  e.target.value = ''; // permettre de re-sélectionner le même fichier
+  e.target.value = ''; // allow re-selecting the same file
   if (!file) return;
   if (currentMeetingId === null) {
-    alert('Veuillez configurer une réunion avant de transcrire un fichier.');
+    alert('Please configure a meeting before transcribing a file.');
     return;
   }
   await startFileTranscription(file);
 });
 
-// openMeetingSetup est défini dans library.js
+// openMeetingSetup is defined in library.js
 function openMeetingSetup() {
   if (typeof window._libOpenMeetingSetup === 'function') {
     window._libOpenMeetingSetup();
   }
 }
 
-// ─── Thème ────────────────────────────────────────────────────────────────────
+// ─── Theme ────────────────────────────────────────────────────────────────────
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
   localStorage.setItem('parakeet-theme', theme);
