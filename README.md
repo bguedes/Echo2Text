@@ -1,6 +1,21 @@
 # Echo2Text — Real-time Meeting Transcription & Analysis
 
-Desktop application (Windows / macOS) for live meeting transcription with automatic question and action item detection, powered by the **NeMo Parakeet TDT 0.6B v3** ASR model (ONNX) and a local LLM via **LMStudio**.
+Desktop application (Windows / macOS) for live meeting transcription with automatic speaker detection, question and action item detection, powered by the **NeMo Parakeet TDT 0.6B v3** ASR model (ONNX) and a local LLM via **LMStudio**.
+
+---
+
+## Features
+
+- **Real-time transcription** — live speech-to-text with word-level timestamps
+- **Speaker diarization** — automatically detects and labels each speaker (Speaker 1, Speaker 2…) with colored badges; rename them to real names (Alice, Bob…) and the entire transcript updates instantly
+- **Real-time question detection** — LLM identifies questions as they are spoken and generates answers on the fly
+- **Action item detection** — at the end of the meeting, the LLM extracts all action items from the full transcript
+- **Meeting summary** — automatic structured summary (key points + next steps) in JSON
+- **Speaker-aware LLM context** — questions, actions and summary are generated with full speaker attribution (`[Alice]: …`)
+- **Multi-source audio** — microphone, system audio (Zoom, Teams, Meet), web URL, or audio file
+- **Meeting library** — store meetings by company, replay audio recordings, browse past transcripts and summaries
+- **Export** — CSV and SRT export with timestamps
+- **4 themes** — Dark, Light, Nord, Sepia
 
 ---
 
@@ -13,10 +28,11 @@ Desktop application (Windows / macOS) for live meeting transcription with automa
 5. [Install Python Dependencies](#5-install-python-dependencies)
 6. [Install Node.js Dependencies](#6-install-nodejs-dependencies)
 7. [Install and Configure LMStudio](#7-install-and-configure-lmstudio)
-8. [First Launch](#8-first-launch)
-9. [macOS Launch (Apple M3)](#9-macos-launch-apple-m3)
-10. [Supported Audio Sources](#10-supported-audio-sources)
-11. [FAQ / Troubleshooting](#11-faq--troubleshooting)
+8. [Speaker Diarization Setup (optional)](#8-speaker-diarization-setup-optional)
+9. [First Launch](#9-first-launch)
+10. [macOS Launch (Apple M3)](#10-macos-launch-apple-m3)
+11. [Supported Audio Sources](#11-supported-audio-sources)
+12. [FAQ / Troubleshooting](#12-faq--troubleshooting)
 
 ---
 
@@ -25,13 +41,15 @@ Desktop application (Windows / macOS) for live meeting transcription with automa
 | Component | Windows | macOS (M3) |
 |-----------|---------|------------|
 | OS | Windows 10/11 64-bit | macOS 14 Sonoma or later |
-| GPU (optional) | NVIDIA CUDA 11.8+ | — (CPU only, Metal not supported by ONNX Runtime) |
+| GPU (optional) | NVIDIA CUDA 11.8+ | — (CPU only) |
 | RAM | 8 GB minimum, 16 GB recommended | 8 GB minimum, 16 GB recommended |
-| Disk space | ~5 GB (model ~600 MB + LMStudio) | ~5 GB |
+| Disk space | ~5 GB base + ~3 GB with diarization | ~5 GB base + ~3 GB with diarization |
 | Python | 3.10 – 3.12 | 3.10 – 3.12 |
 | Node.js | 18 LTS or 20 LTS | 18 LTS or 20 LTS |
 
 > **NVIDIA GPU**: if you have an NVIDIA card, `onnx-asr` will automatically use CUDA to accelerate transcription. Without a GPU, transcription runs on CPU (slower but fully functional).
+
+> **Diarization**: the speaker detection feature requires an additional ~2 GB for PyTorch and the pyannote models. It is fully optional — the app works normally without it.
 
 ---
 
@@ -122,7 +140,7 @@ python3 -m venv venv
 source venv/bin/activate
 
 # Install dependencies (CPU only on M3)
-pip install "onnx-asr[hub]>=0.6.1" "fastapi>=0.115.0" "uvicorn[standard]>=0.30.0"
+pip install "onnx-asr[hub]>=0.6.1" "fastapi>=0.115.0" "uvicorn[standard]>=0.30.0" "python-dotenv>=1.0.0"
 ```
 
 > On Apple Silicon, `onnxruntime` runs in CPU mode. The `[gpu]` extra is not needed.
@@ -201,7 +219,70 @@ To have LMStudio start its server automatically on launch:
 
 ---
 
-## 8. First Launch
+## 8. Speaker Diarization Setup (optional)
+
+Speaker diarization automatically identifies **who is speaking** and labels each segment of the transcript with a colored badge. Speakers can be renamed to their real names, and the LLM receives the full attributed context when generating questions, actions, and summaries.
+
+**The app works normally without diarization** — if no token is configured, speaker badges are simply not shown.
+
+### 8.1 Prerequisites (all free)
+
+The diarization pipeline is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) and requires accepting the terms of use of two HuggingFace models:
+
+1. Go to [hf.co/pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) → click **"Agree and access repository"**
+2. Go to [hf.co/pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) → same
+3. Generate a **Read** token at [hf.co/settings/tokens](https://huggingface.co/settings/tokens)
+
+### 8.2 Configuration
+
+```bash
+# Copy the template
+cp .env.example .env   # macOS / Linux
+copy .env.example .env  # Windows
+
+# Edit .env and paste your token
+HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx
+```
+
+### 8.3 Install diarization dependencies
+
+```bash
+# Activate your virtual environment first
+venv\Scripts\activate        # Windows
+source venv/bin/activate     # macOS
+
+pip install pyannote.audio python-dotenv
+```
+
+> This installs **PyTorch** (~2 GB) as a transitive dependency. On macOS M3, native ARM64 builds are used automatically.
+
+### 8.4 How it works
+
+| What you see | What it means |
+|---|---|
+| Colored badge **● Speaker 1** | First detected speaker |
+| Colored badge **● Speaker 2** | Second detected speaker |
+| Rename input in the Speakers panel | Type "Alice" → the full transcript updates instantly |
+| LLM prompt context | `[Alice]: We should target May 15th. [Bob]: I can handle that.` |
+
+Speaker identities are **stable across audio chunks** — if the same person speaks again 2 minutes later, they get the same label. Speaker names are saved with the meeting and restored when reopening from the library.
+
+### 8.5 Startup with diarization enabled
+
+On launch, the server loads the pyannote pipeline in a background thread (~30–60 seconds). You will see in the logs:
+
+```
+[diarization] Pipeline ready (cpu)      # or (cuda) with an NVIDIA GPU
+```
+
+If the token is missing or invalid:
+```
+[diarization] HF_TOKEN missing — diarization disabled.
+```
+
+---
+
+## 9. First Launch
 
 ### Windows
 Double-click `start.bat` or run in a terminal:
@@ -219,21 +300,22 @@ chmod +x start.sh
 
 1. The Python server (`server.py`) starts on port **8765**
 2. The Parakeet model is downloaded from HuggingFace (~600 MB, **once only**)
-3. The Electron window opens after ~5 seconds
-4. The **ASR Server** dot turns green when the model is loaded (~30s–2min depending on your machine)
-5. The **LMStudio** dot turns green if the LMStudio server is active on port 1234
+3. If `HF_TOKEN` is set, the diarization pipeline loads in the background (~30–60s)
+4. The Electron window opens after ~5 seconds
+5. The **ASR Server** dot turns green when the model is loaded
+6. The **LMStudio** dot turns green if the LMStudio server is active on port 1234
 
 ### First recording
 
 1. Click **▶ Start** → a setup modal opens
 2. Enter the company name and meeting title
 3. Click **▶ Start** in the modal
-4. Speak — transcription appears in real time
+4. Speak — transcription appears in real time with speaker badges if diarization is active
 5. Click **■ Stop** to end the session and generate the summary
 
 ---
 
-## 9. macOS Launch (Apple M3)
+## 10. macOS Launch (Apple M3)
 
 The `start.sh` script is the macOS equivalent of `start.bat`.
 
@@ -251,10 +333,11 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 - On M3, transcription runs on **CPU** (ONNX Runtime ARM64) — slightly slower than an NVIDIA GPU, but perfectly usable
 - No CUDA installation required
 - The Parakeet TDT v3 model runs natively on Apple Silicon
+- PyTorch (for diarization) uses native ARM64 builds automatically
 
 ---
 
-## 10. Supported Audio Sources
+## 11. Supported Audio Sources
 
 | Source | Description |
 |--------|-------------|
@@ -269,7 +352,7 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 
 ---
 
-## 11. FAQ / Troubleshooting
+## 12. FAQ / Troubleshooting
 
 ### The "ASR Server" dot stays red
 - Make sure the Python server is running
@@ -301,3 +384,19 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 - On CPU (no GPU), expect ~2–5s latency per 5s audio chunk
 - With an NVIDIA GPU, latency drops to <1s
 - On M3, speed is comparable to a recent Intel Core i7 (sufficient for meeting use)
+
+### Speaker badges do not appear
+- Check that `HF_TOKEN` is set in your `.env` file
+- Check the server logs for `[diarization] Pipeline ready` — it can take 30–60s on first load
+- Make sure you accepted the terms of use for both pyannote models on HuggingFace (see [section 8.1](#81-prerequisites-all-free))
+- Diarization requires audio segments of at least 0.1s — very short utterances may not be labeled
+
+### Two speakers are detected as one (or vice versa)
+- This can happen with very similar voices or a noisy microphone
+- The cosine similarity threshold is set to `0.75` in `server.py` (`_match_or_create_speaker`); lower it slightly for more separation, raise it for stricter matching
+- Using a directional or noise-cancelling microphone improves accuracy significantly
+
+### `pip install pyannote.audio` fails
+- Make sure your virtual environment is activated
+- Try updating pip first: `pip install --upgrade pip`
+- On Windows, Visual C++ Build Tools may be required for some sub-dependencies
