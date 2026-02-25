@@ -1,13 +1,13 @@
 'use strict';
 
-// ─── État bibliothèque ────────────────────────────────────────────────────────
+// ─── Library state ────────────────────────────────────────────────────────────
 let libOpen            = false;
 let companies          = [];
 let selectedCompanyId  = null;
 let meetings           = [];
 let selectedMeetingId  = null;
 
-// ─── Éléments DOM ─────────────────────────────────────────────────────────────
+// ─── DOM elements ─────────────────────────────────────────────────────────────
 const libraryOverlay      = document.getElementById('library-overlay');
 const libCompaniesList    = document.getElementById('lib-companies-list');
 const libCompanyNameTitle = document.getElementById('lib-company-name-title');
@@ -48,7 +48,7 @@ async function loadCompanies() {
 function renderCompanies() {
   libCompaniesList.innerHTML = '';
   if (!companies.length) {
-    libCompaniesList.innerHTML = '<div class="lib-empty">Aucune entreprise.<br>Créez-en une avec +</div>';
+    libCompaniesList.innerHTML = '<div class="lib-empty">No companies yet.<br>Create one with +</div>';
     return;
   }
   companies.forEach(c => {
@@ -58,7 +58,7 @@ function renderCompanies() {
     el.innerHTML = `
       <span class="company-color-dot" style="background:${escHtml(c.color || '#ff7c00')}"></span>
       <span class="company-name">${escHtml(c.name)}</span>
-      <button class="btn-delete-company" data-id="${c.id}" title="Supprimer">&#10005;</button>
+      <button class="btn-delete-company" data-id="${c.id}" title="Delete">&#10005;</button>
     `;
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-delete-company')) return;
@@ -96,13 +96,13 @@ async function loadMeetings(companyId) {
 function renderMeetings() {
   libMeetingsList.innerHTML = '';
   if (!meetings.length) {
-    libMeetingsList.innerHTML = '<div class="lib-empty">Aucune réunion pour cette entreprise.</div>';
+    libMeetingsList.innerHTML = '<div class="lib-empty">No meetings for this company.</div>';
     return;
   }
   meetings.forEach(m => {
     const el = document.createElement('div');
     el.className = 'lib-meeting-item' + (m.id === selectedMeetingId ? ' active' : '');
-    const date = m.recorded_at ? new Date(m.recorded_at).toLocaleDateString('fr-FR', {
+    const date = m.recorded_at ? new Date(m.recorded_at).toLocaleDateString('en-US', {
       day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
     }) : '';
     const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
@@ -115,7 +115,7 @@ function renderMeetings() {
           <span class="meeting-status status-${m.status}">${m.status === 'done' ? '✓' : '⏺'}</span>
         </div>
       </div>
-      <button class="btn-delete-meeting-item" title="Supprimer">&#10005;</button>
+      <button class="btn-delete-meeting-item" title="Delete">&#10005;</button>
     `;
     el.querySelector('.meeting-item-content').addEventListener('click', () => selectMeeting(m.id));
     el.querySelector('.btn-delete-meeting-item').addEventListener('click', (e) => {
@@ -140,7 +140,7 @@ async function selectMeeting(id) {
 function renderMeetingDetail(m) {
   libMeetingDetail.classList.remove('hidden');
 
-  const date = m.recorded_at ? new Date(m.recorded_at).toLocaleDateString('fr-FR', {
+  const date = m.recorded_at ? new Date(m.recorded_at).toLocaleDateString('en-US', {
     weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   }) : '';
@@ -152,7 +152,7 @@ function renderMeetingDetail(m) {
         <span class="detail-ts">${Number(s.start_time).toFixed(1)}s</span>
         <span>${escHtml(s.segment)}</span>
       </div>`).join('')
-    : '<div class="lib-empty">Aucune transcription.</div>';
+    : '<div class="lib-empty">No transcription available.</div>';
 
   // Q&A
   const qaHtml = m.questions && m.questions.length
@@ -161,7 +161,7 @@ function renderMeetingDetail(m) {
           <div class="detail-q"><strong>Q${i + 1}.</strong> ${escHtml(q.text)}</div>
           ${q.answer ? `<div class="detail-a">${escHtml(q.answer)}</div>` : ''}
         </div>`).join('')
-    : '<div class="lib-empty">Aucune question.</div>';
+    : '<div class="lib-empty">No questions detected.</div>';
 
   // Actions
   const actionsHtml = m.actions && m.actions.length
@@ -171,19 +171,19 @@ function renderMeetingDetail(m) {
             ${a.status === 'done' ? 'checked' : ''} />
           <span>${escHtml(a.text)}</span>
         </div>`).join('')
-    : '<div class="lib-empty">Aucune action.</div>';
+    : '<div class="lib-empty">No actions detected.</div>';
 
-  // Résumé
+  // Summary
   const summaryHtml = m.summary
     ? `<div class="detail-summary-text">${escHtml(m.summary.summary_text)}</div>
-       ${m.summary.next_steps ? `<div class="detail-nextsteps-label">Prochaines étapes</div>
+       ${m.summary.next_steps ? `<div class="detail-nextsteps-label">Next steps</div>
        <div class="detail-summary-text">${escHtml(m.summary.next_steps)}</div>` : ''}`
-    : '<div class="lib-empty">Aucune synthèse générée.</div>';
+    : '<div class="lib-empty">No summary generated.</div>';
 
   // Audio player
   const audioHtml = m.audio_path
     ? `<audio controls src="file://${m.audio_path.replace(/\\/g, '/')}" class="detail-audio-player"></audio>`
-    : '<div class="lib-empty">Enregistrement audio non disponible.</div>';
+    : '<div class="lib-empty">Audio recording not available.</div>';
 
   libMeetingDetail.innerHTML = `
     <div class="detail-header">
@@ -191,7 +191,7 @@ function renderMeetingDetail(m) {
         <div class="detail-title">${escHtml(m.title)}</div>
         <div class="detail-meta">${date}${dur ? ' · ' + dur : ''}</div>
       </div>
-      <button class="btn-delete-meeting btn-danger" data-id="${m.id}">Supprimer</button>
+      <button class="btn-delete-meeting btn-danger" data-id="${m.id}">Delete</button>
     </div>
     ${m.description ? `<div class="detail-desc">${escHtml(m.description)}</div>` : ''}
 
@@ -206,7 +206,7 @@ function renderMeetingDetail(m) {
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-label">&#10067; Questions &amp; Réponses</div>
+      <div class="detail-section-label">&#10067; Questions &amp; Answers</div>
       <div class="detail-qa">${qaHtml}</div>
     </div>
 
@@ -216,7 +216,7 @@ function renderMeetingDetail(m) {
     </div>
 
     <div class="detail-section">
-      <div class="detail-section-label">&#128196; Synthèse</div>
+      <div class="detail-section-label">&#128196; Summary</div>
       ${summaryHtml}
     </div>
   `;
@@ -246,7 +246,7 @@ function renderMeetingDetail(m) {
 }
 
 async function deleteMeeting(id) {
-  if (!confirm('Supprimer cette réunion ? Cette action est irréversible.')) return;
+  if (!confirm('Delete this meeting? This action cannot be undone.')) return;
   try {
     await window.electronAPI.db.deleteMeeting(id);
     selectedMeetingId = null;
@@ -258,7 +258,7 @@ async function deleteMeeting(id) {
 }
 
 async function confirmDeleteCompany(id, name) {
-  if (!confirm(`Supprimer l'entreprise "${name}" et TOUTES ses réunions ?`)) return;
+  if (!confirm(`Delete company "${name}" and ALL its meetings?`)) return;
   try {
     await window.electronAPI.db.deleteCompany(id);
     if (selectedCompanyId === id) {
@@ -293,15 +293,15 @@ async function populateCompanySelect() {
   catch(e) { companies = []; }
 
   if (companies.length === 0) {
-    modalCompanySelect.innerHTML = '<option value="">— Aucune entreprise —</option>';
+    modalCompanySelect.innerHTML = '<option value="">— No company —</option>';
     modalNewCompanyForm.classList.remove('hidden');
-    document.getElementById('modal-btn-new-company').textContent = '− Annuler';
+    document.getElementById('modal-btn-new-company').textContent = '− Cancel';
     setTimeout(() => modalNewCompanyName.focus(), 80);
   } else {
     modalCompanySelect.innerHTML = companies.map(c =>
       `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
     modalNewCompanyForm.classList.add('hidden');
-    document.getElementById('modal-btn-new-company').textContent = '+ Nouvelle';
+    document.getElementById('modal-btn-new-company').textContent = '+ New';
   }
 }
 
@@ -309,7 +309,7 @@ async function confirmNewMeeting() {
   let companyId = Number(modalCompanySelect.value);
   const companyNameField = modalNewCompanyName.value.trim();
 
-  // Créer une nouvelle entreprise si le formulaire inline est visible
+  // Create a new company if the inline form is visible
   if (!modalNewCompanyForm.classList.contains('hidden') && companyNameField) {
     try {
       const result = await window.electronAPI.db.createCompany(companyNameField, '', '#ff7c00');
@@ -322,28 +322,28 @@ async function confirmNewMeeting() {
 
   const title = modalTitle.value.trim();
   if (!title) { modalTitle.focus(); return; }
-  if (!companyId) { alert('Sélectionnez ou créez une entreprise.'); return; }
+  if (!companyId) { alert('Please select or create a company.'); return; }
 
   const desc = modalDesc.value.trim();
   try {
     const result = await window.electronAPI.db.createMeeting(companyId, title, desc);
     const meetingId = result.id;
 
-    // Trouver le nom de l'entreprise
+    // Find the company name
     let companyName = companyNameField || '';
     if (!companyName) {
       const found = companies.find(c => c.id === companyId);
       companyName = found ? found.name : String(companyId);
     }
 
-    // Transmettre le contexte à app.js
+    // Pass context to app.js
     if (typeof window._appSetCurrentMeeting === 'function') {
       window._appSetCurrentMeeting(meetingId, companyName, title);
     }
 
     closeMeetingSetup();
 
-    // Démarrer l'enregistrement automatiquement
+    // Start recording automatically
     if (typeof window._appStartRecording === 'function') {
       window._appStartRecording();
     }
@@ -352,13 +352,13 @@ async function confirmNewMeeting() {
   }
 }
 
-// ─── Nouveau meeting depuis bibliothèque ──────────────────────────────────────
+// ─── New meeting from library ──────────────────────────────────────────────────
 function openNewMeetingFromLib() {
   closeLibrary();
   openMeetingSetup();
-  // Pré-sélectionner l'entreprise courante si applicable
+  // Pre-select the current company if applicable
   if (selectedCompanyId !== null) {
-    // Sera appliqué après populateCompanySelect dans openMeetingSetup
+    // Will be applied after populateCompanySelect in openMeetingSetup
     const origPopulate = populateCompanySelect;
     openMeetingSetup().then(() => {
       if (selectedCompanyId) {
@@ -369,9 +369,9 @@ function openNewMeetingFromLib() {
   }
 }
 
-// ─── Ajout entreprise depuis bibliothèque ─────────────────────────────────────
+// ─── Add company from library ─────────────────────────────────────────────────
 async function createCompanyFromLib() {
-  const name = prompt('Nom de la nouvelle entreprise :');
+  const name = prompt('New company name:');
   if (!name || !name.trim()) return;
   try {
     await window.electronAPI.db.createCompany(name.trim(), '', '#ff7c00');
@@ -395,7 +395,7 @@ function formatDuration(sec) {
   return m > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : `${s}s`;
 }
 
-// ─── Événements ───────────────────────────────────────────────────────────────
+// ─── Events ───────────────────────────────────────────────────────────────────
 document.getElementById('btn-library').addEventListener('click', openLibrary);
 document.getElementById('btn-close-library').addEventListener('click', closeLibrary);
 document.getElementById('btn-new-company').addEventListener('click', createCompanyFromLib);
@@ -411,16 +411,16 @@ document.getElementById('modal-btn-new-company').addEventListener('click', () =>
   const hidden = modalNewCompanyForm.classList.contains('hidden');
   if (hidden) {
     modalNewCompanyForm.classList.remove('hidden');
-    document.getElementById('modal-btn-new-company').textContent = '- Annuler';
+    document.getElementById('modal-btn-new-company').textContent = '- Cancel';
   } else {
     modalNewCompanyForm.classList.add('hidden');
-    document.getElementById('modal-btn-new-company').textContent = '+ Nouvelle';
+    document.getElementById('modal-btn-new-company').textContent = '+ New';
     modalNewCompanyName.value = '';
   }
 });
 
-// Fermer modal sur clic backdrop
+// Close modal on backdrop click
 document.querySelector('#meeting-setup-modal .modal-backdrop').addEventListener('click', closeMeetingSetup);
 
-// Exposer pour app.js
+// Expose for app.js
 window._libOpenMeetingSetup = openMeetingSetup;

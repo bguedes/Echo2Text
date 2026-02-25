@@ -2,96 +2,96 @@
 setlocal enabledelayedexpansion
 
 echo ============================================================
-echo  Installation de LMStudio pour Parakeet
+echo  LMStudio Installation for Echo2Text
 echo ============================================================
 echo.
 
-:: Vérifier si LMStudio est déjà installé
+:: Check if LMStudio is already installed
 set "LMSTUDIO_EXE=%LOCALAPPDATA%\Programs\LM-Studio\LM Studio.exe"
 if exist "%LMSTUDIO_EXE%" (
-    echo [OK] LMStudio est déjà installé.
-    echo      Chemin : %LMSTUDIO_EXE%
+    echo [OK] LMStudio is already installed.
+    echo      Path: %LMSTUDIO_EXE%
     echo.
     goto :already_installed
 )
 
-:: Télécharger LMStudio via winget (Windows 10/11)
+:: Download LMStudio via winget (Windows 10/11)
 where winget >nul 2>&1
 if %ERRORLEVEL% EQU 0 (
-    echo [1/2] Installation via winget...
+    echo [1/2] Installing via winget...
     winget install --id ElementLabs.LMStudio --accept-package-agreements --accept-source-agreements
     if !ERRORLEVEL! EQU 0 (
-        echo [OK] LMStudio installé avec succès via winget.
+        echo [OK] LMStudio installed successfully via winget.
         goto :configure
     )
-    echo [WARN] winget a échoué. Tentative de téléchargement manuel...
+    echo [WARN] winget failed. Attempting manual download...
 )
 
-:: Téléchargement manuel via PowerShell
-echo [1/2] Téléchargement de LMStudio...
+:: Manual download via PowerShell
+echo [1/2] Downloading LMStudio...
 set "DOWNLOAD_URL=https://releases.lmstudio.ai/windows/x64/latest/LM-Studio-Setup.exe"
 set "INSTALLER=%TEMP%\LM-Studio-Setup.exe"
 
 powershell -NoProfile -Command ^
-  "try { Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%INSTALLER%' -UseBasicParsing; Write-Host 'Téléchargement OK' } catch { Write-Host 'Erreur :' $_.Exception.Message; exit 1 }"
+  "try { Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%INSTALLER%' -UseBasicParsing; Write-Host 'Download OK' } catch { Write-Host 'Error:' $_.Exception.Message; exit 1 }"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [ERREUR] Impossible de télécharger LMStudio automatiquement.
-    echo          Téléchargez-le manuellement sur https://lmstudio.ai
-    echo          puis relancez ce script ou installez-le manuellement.
+    echo [ERROR] Unable to download LMStudio automatically.
+    echo         Download it manually from https://lmstudio.ai
+    echo         then rerun this script or install it manually.
     pause
     exit /b 1
 )
 
-echo [2/2] Installation en cours...
+echo [2/2] Installing...
 "%INSTALLER%" /S
 if %ERRORLEVEL% NEQ 0 (
-    echo [ERREUR] L'installation a échoué. Essayez d'installer manuellement.
+    echo [ERROR] Installation failed. Try installing manually.
     start "" "https://lmstudio.ai"
     pause
     exit /b 1
 )
 
-:: Attendre que l'installation se termine
+:: Wait for the installation to complete
 timeout /t 5 /nobreak >nul
 del /f /q "%INSTALLER%" 2>nul
 
-echo [OK] LMStudio installé avec succès.
+echo [OK] LMStudio installed successfully.
 
 :configure
 echo.
 echo ============================================================
-echo  Configuration de LMStudio pour Parakeet
+echo  LMStudio Configuration for Echo2Text
 echo ============================================================
 echo.
-echo  Étapes à effectuer dans LMStudio après son ouverture :
+echo  Steps to complete in LMStudio after opening it:
 echo.
-echo  1. Onglet SEARCH (loupe à gauche)
-echo     Recherchez un modèle, par exemple :
-echo       - "mistral 7b instruct"  (recommandé, ~4.4 Go)
-echo       - "llama 3.1 8b instruct" (~4.9 Go)
-echo       - "phi-3.5 mini instruct" (~2.2 Go, PC avec peu de RAM)
-echo     Choisissez la variante "Q4_K_M" et cliquez Download.
+echo  1. SEARCH tab (magnifying glass on the left)
+echo     Search for a model, for example:
+echo       - "mistral 7b instruct"  (recommended, ~4.4 GB)
+echo       - "llama 3.1 8b instruct" (~4.9 GB)
+echo       - "phi-3.5 mini instruct" (~2.2 GB, low-RAM PCs)
+echo     Select the "Q4_K_M" variant and click Download.
 echo.
-echo  2. Une fois téléchargé, onglet LOCAL SERVER (icone <>)
-echo     Sélectionnez votre modèle dans la liste déroulante.
-echo     Cliquez "Start Server".
-echo     Le serveur démarre sur http://localhost:1234
+echo  2. Once downloaded, go to the LOCAL SERVER tab (icon <>)
+echo     Select your model from the dropdown list.
+echo     Click "Start Server".
+echo     The server starts at http://localhost:1234
 echo.
-echo  3. Dans Parakeet, l'URL est déjà configurée sur
+echo  3. In Echo2Text, the URL is already set to
 echo     http://localhost:1234/v1
-echo     Le point "LMStudio" passera au vert automatiquement.
+echo     The "LMStudio" dot will turn green automatically.
 echo.
 echo ============================================================
 echo.
 
-set /p OPEN_NOW="Ouvrir LMStudio maintenant ? (O/N) : "
-if /i "%OPEN_NOW%"=="O" (
+set /p OPEN_NOW="Open LMStudio now? (Y/N): "
+if /i "%OPEN_NOW%"=="Y" (
     if exist "%LMSTUDIO_EXE%" (
         start "" "%LMSTUDIO_EXE%"
     ) else (
-        :: Chercher dans d'autres emplacements courants
+        :: Search in other common locations
         for %%P in (
             "%LOCALAPPDATA%\Programs\LM-Studio\LM Studio.exe"
             "%PROGRAMFILES%\LM Studio\LM Studio.exe"
@@ -102,25 +102,25 @@ if /i "%OPEN_NOW%"=="O" (
                 goto :end
             )
         )
-        echo [INFO] Impossible de trouver LMStudio. Cherchez-le dans le menu Démarrer.
+        echo [INFO] Cannot find LMStudio. Search for it in the Start menu.
     )
 )
 goto :end
 
 :already_installed
-echo  LMStudio est déjà installé sur votre machine.
+echo  LMStudio is already installed on your machine.
 echo.
-echo  Si vous n'avez pas encore chargé de modèle LLM :
-echo  1. Ouvrez LMStudio
-echo  2. Onglet SEARCH → cherchez "mistral 7b instruct" → Download Q4_K_M
-echo  3. Onglet LOCAL SERVER → sélectionnez le modèle → Start Server
+echo  If you have not yet loaded an LLM model:
+echo  1. Open LMStudio
+echo  2. SEARCH tab → search "mistral 7b instruct" → Download Q4_K_M
+echo  3. LOCAL SERVER tab → select the model → Start Server
 echo.
-set /p OPEN_NOW="Ouvrir LMStudio ? (O/N) : "
-if /i "%OPEN_NOW%"=="O" start "" "%LMSTUDIO_EXE%"
+set /p OPEN_NOW="Open LMStudio? (Y/N): "
+if /i "%OPEN_NOW%"=="Y" start "" "%LMSTUDIO_EXE%"
 
 :end
 echo.
-echo  Terminé. Vous pouvez maintenant lancer Parakeet avec start.bat
+echo  Done. You can now launch Echo2Text with start.bat
 echo.
 pause
 endlocal

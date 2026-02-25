@@ -7,20 +7,20 @@ const db    = require('./db');
 let mainWindow  = null;
 let pythonProc  = null;
 
-// ─── Détection Python ─────────────────────────────────────────────────────────
+// ─── Python detection ─────────────────────────────────────────────────────────
 function getPythonExe() {
   const venvPath = path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe');
   if (fs.existsSync(venvPath)) return venvPath;
   return 'python';
 }
 
-// ─── Lancement du serveur Python ─────────────────────────────────────────────
+// ─── Python server launch ─────────────────────────────────────────────────────
 function startPythonServer() {
   const pythonExe  = getPythonExe();
   const serverPath = path.join(__dirname, '..', 'server.py');
   const cwd        = path.join(__dirname, '..');
 
-  console.log(`[main] Démarrage Python : ${pythonExe} ${serverPath}`);
+  console.log(`[main] Starting Python: ${pythonExe} ${serverPath}`);
 
   pythonProc = spawn(pythonExe, [serverPath], {
     cwd,
@@ -31,12 +31,12 @@ function startPythonServer() {
   pythonProc.stderr.on('data', (d) => process.stderr.write(`[server] ${d}`));
 
   pythonProc.on('exit', (code) => {
-    console.log(`[main] Serveur Python terminé (code ${code})`);
+    console.log(`[main] Python server exited (code ${code})`);
     pythonProc = null;
   });
 }
 
-// ─── Fenêtre principale ───────────────────────────────────────────────────────
+// ─── Main window ──────────────────────────────────────────────────────────────
 function createWindow() {
   mainWindow = new BrowserWindow({
     width:  1200,
@@ -44,7 +44,7 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#0f1117',
-    title: 'Parakeet – Transcription & Analyse',
+    title: 'Echo2Text – Transcription & Analysis',
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -54,7 +54,7 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  // Autoriser le microphone
+  // Allow microphone
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (permission === 'media') return callback(true);
     callback(false);
@@ -125,7 +125,7 @@ ipcMain.handle('audio:save', (_e, { meetingId, dataBase64 }) => {
   return { audioPath };
 });
 
-// ─── Fenêtre URL (YouTube / lecteur web) ──────────────────────────────────────
+// ─── URL window (YouTube / web player) ───────────────────────────────────────
 let urlWindow = null;
 
 ipcMain.handle('open-url-window', async (_e, url) => {
@@ -138,7 +138,7 @@ ipcMain.handle('open-url-window', async (_e, url) => {
   urlWindow = new BrowserWindow({
     width:  960,
     height: 640,
-    title:  'Parakeet – Lecteur Web',
+    title:  'Echo2Text – Web Player',
     webPreferences: { nodeIntegration: false, contextIsolation: true },
   });
   urlWindow.loadURL(url);
@@ -159,7 +159,7 @@ ipcMain.handle('desktop-capturer:get-sources', async () => {
   return sources.map(s => ({ id: s.id, name: s.name }));
 });
 
-// ─── Cycle de vie ─────────────────────────────────────────────────────────────
+// ─── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   const dataDir = path.join(app.getPath('userData'), 'parakeet-data');
   db.initDB(dataDir);
