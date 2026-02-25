@@ -5,6 +5,12 @@ set -euo pipefail
 # ── Script directory (resolves symlinks) ──────────────────────────────────────
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Kill any stale process still holding port 8765
+if lsof -ti :8765 &>/dev/null; then
+    echo "[start] Releasing port 8765..."
+    lsof -ti :8765 | xargs kill -9 2>/dev/null || true
+fi
+
 echo "[start] Starting Python ASR server..."
 
 # ── Choose Python (venv or system) ────────────────────────────────────────────

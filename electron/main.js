@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
+const http  = require('http');
 const { spawn } = require('child_process');
 const db    = require('./db');
 
@@ -14,8 +15,24 @@ function getPythonExe() {
   return 'python';
 }
 
+// ─── Check if ASR server is already running ───────────────────────────────────
+function isServerRunning() {
+  return new Promise((resolve) => {
+    const req = http.get('http://127.0.0.1:8765/health', (res) => {
+      resolve(res.statusCode === 200);
+    });
+    req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+    req.on('error', () => resolve(false));
+  });
+}
+
 // ─── Python server launch ─────────────────────────────────────────────────────
-function startPythonServer() {
+async function startPythonServer() {
+  if (await isServerRunning()) {
+    console.log('[main] ASR server already running — skipping spawn.');
+    return;
+  }
+
   const pythonExe  = getPythonExe();
   const serverPath = path.join(__dirname, '..', 'server.py');
   const cwd        = path.join(__dirname, '..');
