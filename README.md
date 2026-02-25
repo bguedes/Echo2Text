@@ -227,11 +227,13 @@ Speaker diarization automatically identifies **who is speaking** and labels each
 
 ### 8.1 Prerequisites (all free)
 
-The diarization pipeline is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) and requires accepting the terms of use of two HuggingFace models:
+The diarization pipeline is based on [pyannote.audio](https://github.com/pyannote/pyannote-audio) and requires accepting the terms of use of **four** HuggingFace models (all free, one-click each):
 
 1. Go to [hf.co/pyannote/speaker-diarization-3.1](https://huggingface.co/pyannote/speaker-diarization-3.1) → click **"Agree and access repository"**
 2. Go to [hf.co/pyannote/segmentation-3.0](https://huggingface.co/pyannote/segmentation-3.0) → same
-3. Generate a **Read** token at [hf.co/settings/tokens](https://huggingface.co/settings/tokens)
+3. Go to [hf.co/pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1) → same
+4. Go to [hf.co/pyannote/embedding](https://huggingface.co/pyannote/embedding) → same
+5. Generate a **Read** token at [hf.co/settings/tokens](https://huggingface.co/settings/tokens)
 
 ### 8.2 Configuration
 

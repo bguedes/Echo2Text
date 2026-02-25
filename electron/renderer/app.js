@@ -32,7 +32,15 @@ Donne une réponse concise et pratique (2 à 4 phrases maximum).
 Réponds directement, sans reformuler la question, sans intro ni conclusion.`;
 
 const SYSTEM_PROMPT_ACTIONS = `Tu es un assistant d'analyse de réunion.
-Voici la transcription complète d'une réunion. Identifie toutes les actions à réaliser.
+Voici la transcription complète d'une réunion. Identifie TOUTES les actions à réaliser, y compris les engagements implicites et les tâches assignées à des personnes nommées.
+
+Détecte en particulier :
+- Les impératifs directs : "envoie X", "vérifie Y", "prépare Z"
+- Les obligations indirectes : "il faudra que tu...", "tu dois...", "il faut...", "n'oublie pas de...", "pense à..."
+- Les assignations à une personne : "[Prénom], tu t'occupes de...", "[Prénom] devra...", "il faudra que [Prénom]..."
+- Les engagements pris : "je vais faire...", "on va préparer...", "je m'en occupe"
+
+Quand une personne est nommée pour une tâche, inclus son prénom dans l'action.
 
 RÈGLES ABSOLUES DE FORMAT :
 - Une ligne par action, préfixe obligatoire "ACTION: ".
@@ -40,6 +48,7 @@ RÈGLES ABSOLUES DE FORMAT :
 - Si aucune action à faire : répondre uniquement RIEN.
 
 Exemples valides :
+ACTION: Pierre — Envoyer le compte rendu à la fin de la réunion.
 ACTION: Envoyer un email au transporteur pour confirmer la livraison demain à 14h.
 ACTION: Vérifier les niveaux de stock avant la livraison.
 
@@ -47,9 +56,9 @@ Exemple si rien :
 RIEN`;
 
 const SYSTEM_PROMPT_SUMMARY = `Tu es un assistant de synthèse de réunion.
-Voici la transcription complète, les questions et les actions.
+Voici la transcription complète, les questions/réponses et les actions déjà détectées.
 Produis une synthèse en JSON strict (sans markdown) :
-{"summary":"résumé en 3-5 phrases","next_steps":"décisions et prochaines étapes"}
+{"summary":"résumé en 3-5 phrases","next_steps":"liste complète des actions et décisions — relis la transcription pour inclure toute action qui aurait pu être manquée (obligations, assignations nominatives, engagements pris)"}
 Réponds UNIQUEMENT avec le JSON.`;
 
 // ─── Prompts EN ───────────────────────────────────────────────────────────────
@@ -77,7 +86,15 @@ Give a concise and practical answer (2 to 4 sentences maximum).
 Reply directly, without rephrasing the question, without intro or conclusion.`;
 
 const SYSTEM_PROMPT_ACTIONS_EN = `You are a meeting analysis assistant.
-Here is the complete transcript of a meeting. Identify all actions to be taken.
+Here is the complete transcript of a meeting. Identify ALL actions to be taken, including implicit commitments and tasks assigned to named individuals.
+
+Detect in particular:
+- Direct imperatives: "send X", "check Y", "prepare Z"
+- Indirect obligations: "you'll need to...", "you should...", "don't forget to...", "make sure to...", "you have to..."
+- Assignments to a person: "[Name], you handle...", "[Name] will need to...", "[Name] should..."
+- Commitments made: "I'll do...", "we'll prepare...", "I'll take care of it"
+
+When a person is named for a task, include their name in the action.
 
 ABSOLUTE FORMAT RULES:
 - One line per action, mandatory prefix "ACTION: ".
@@ -85,6 +102,7 @@ ABSOLUTE FORMAT RULES:
 - If no action to take: reply only NOTHING.
 
 Valid examples:
+ACTION: Pierre — Send the meeting notes at the end of the meeting.
 ACTION: Send an email to the carrier to confirm delivery tomorrow at 2pm.
 ACTION: Check stock levels before delivery.
 
@@ -92,9 +110,9 @@ Example if nothing:
 NOTHING`;
 
 const SYSTEM_PROMPT_SUMMARY_EN = `You are a meeting summary assistant.
-Here is the full transcript, the questions and the actions.
+Here is the full transcript, the questions/answers and already detected actions.
 Produce a summary in strict JSON (no markdown):
-{"summary":"summary in 3-5 sentences","next_steps":"decisions and next steps"}
+{"summary":"summary in 3-5 sentences","next_steps":"complete list of all actions and decisions — re-read the transcript to include any action that may have been missed (obligations, named assignments, commitments made)"}
 Reply ONLY with the JSON.`;
 
 // ─── Prompt getters (dynamic by language) ────────────────────────────────────

@@ -57,12 +57,13 @@ def load_diarization():
         print("[diarization] HF_TOKEN missing — diarization disabled.")
         return
     try:
-        from pyannote.audio import Pipeline, Inference
+        from pyannote.audio import Pipeline, Inference, Model
         import torch
         pipe = Pipeline.from_pretrained(
-            "pyannote/speaker-diarization-3.1", use_auth_token=hf_token
+            "pyannote/speaker-diarization-3.1", token=hf_token
         )
-        emb = Inference("pyannote/embedding", window="whole", use_auth_token=hf_token)
+        emb_model = Model.from_pretrained("pyannote/embedding", token=hf_token)
+        emb = Inference(emb_model, window="whole")
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         pipe.to(device)
         with _diar_lock:
@@ -71,22 +72,34 @@ def load_diarization():
             _diarization_on  = True
         print(f"[diarization] Pipeline ready ({device}).")
     except Exception as e:
-        print(f"[diarization] Error: {e}")
+        msg = str(e)
+        if '403' in msg or 'gated' in msg or 'restricted' in msg:
+            import re
+            match = re.search(r'pyannote/[\w\-]+', msg)
+            model = match.group(0) if match else 'a pyannote model'
+            print(f"[diarization] Access denied to {model}.")
+            print(f"[diarization] Accept terms at: https://huggingface.co/{model}")
+            print(f"[diarization] Then restart the server.")
+        else:
+            print(f"[diarization] Error: {e}")
 
 threading.Thread(target=load_diarization, daemon=True).start()
 
 # ─── Cross-chunk speaker registry ─────────────────────────────────────────────
 
 _speaker_embeddings = {}   # { global_id: centroid np.ndarray }
+_speaker_counts     = {}   # { global_id: int } — number of embeddings averaged in
 _speaker_counter    = 0
 _registry_lock      = threading.Lock()
 
 def _cosine_sim(a, b):
+    a, b = a.flatten(), b.flatten()
     denom = np.linalg.norm(a) * np.linalg.norm(b)
     return float(np.dot(a, b) / denom) if denom > 0 else 0.0
 
-def _match_or_create_speaker(embedding, threshold=0.75):
+def _match_or_create_speaker(embedding, threshold=0.50):
     global _speaker_counter
+    embedding = np.array(embedding).flatten()
     with _registry_lock:
         best_id, best_score = None, -1.0
         for gid, centroid in _speaker_embeddings.items():
@@ -94,14 +107,16 @@ def _match_or_create_speaker(embedding, threshold=0.75):
             if s > best_score:
                 best_score, best_id = s, gid
         if best_score >= threshold and best_id is not None:
-            count = sum(1 for v in _speaker_embeddings if v == best_id)
+            count = _speaker_counts[best_id]
             _speaker_embeddings[best_id] = (
                 (_speaker_embeddings[best_id] * count + embedding) / (count + 1)
             )
+            _speaker_counts[best_id] = count + 1
             return best_id
         gid = f"SPEAKER_{_speaker_counter}"
         _speaker_counter += 1
         _speaker_embeddings[gid] = embedding
+        _speaker_counts[gid]     = 1
         return gid
 
 # ─── Audio chunk diarization ──────────────────────────────────────────────────
@@ -117,7 +132,19 @@ def diarize_chunk(audio_float32, time_offset, sentences):
         waveform = torch.from_numpy(audio_float32).unsqueeze(0)
         input_dict = {"waveform": waveform, "sample_rate": SAMPLE_RATE}
 
-        diarization = _diar_pipeline(input_dict)
+        result = _diar_pipeline(input_dict)
+        # pyannote 3.x returns DiarizeOutput(speaker_diarization=Annotation, ...)
+        # pyannote 2.x returns Annotation directly (has itertracks)
+        if hasattr(result, 'itertracks'):
+            diarization = result
+        elif hasattr(result, 'speaker_diarization'):
+            diarization = result.speaker_diarization
+        elif hasattr(result, 'diarization'):
+            diarization = result.diarization
+        elif hasattr(result, 'annotation'):
+            diarization = result.annotation
+        else:
+            raise ValueError(f"Unexpected diarization output type: {type(result)}")
 
         # Extract embedding per local speaker → map to global_id
         local_to_global = {}
@@ -258,9 +285,10 @@ async def health():
 async def ws_transcribe(websocket: WebSocket):
     await websocket.accept()
 
-    global _speaker_embeddings, _speaker_counter
+    global _speaker_embeddings, _speaker_counts, _speaker_counter
     with _registry_lock:
         _speaker_embeddings = {}
+        _speaker_counts     = {}
         _speaker_counter    = 0
 
     audio_q  = queue.Queue()
@@ -342,7 +370,7 @@ async def ws_transcribe(websocket: WebSocket):
                         audio = resample(audio, sample_rate)
                     audio_q.put(audio)
 
-    except WebSocketDisconnect:
+    except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
         sender_task.cancel()
