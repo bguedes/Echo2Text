@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer, nativeImage } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const http  = require('http');
@@ -71,6 +71,28 @@ function createWindow() {
 
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
+  // ── Window icon: render SVG → PNG via renderer Canvas, then set via nativeImage
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow.webContents.executeJavaScript(`
+      new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width  = 256;
+          canvas.height = 256;
+          canvas.getContext('2d').drawImage(img, 0, 0, 256, 256);
+          resolve(canvas.toDataURL('image/png'));
+        };
+        img.onerror = () => resolve(null);
+        img.src = 'assets/icon-echo2text.svg';
+      })
+    `).then(dataURL => {
+      if (!dataURL || !mainWindow) return;
+      const icon = nativeImage.createFromDataURL(dataURL);
+      if (!icon.isEmpty()) mainWindow.setIcon(icon);
+    }).catch(err => console.error('[icon]', err));
+  });
+
   // Allow microphone
   session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
     if (permission === 'media') return callback(true);
@@ -115,8 +137,8 @@ ipcMain.handle('db:get-meeting', (_e, { id }) =>
   db.getMeeting(id)
 );
 
-ipcMain.handle('db:create-meeting', (_e, { companyId, title, desc }) =>
-  db.createMeeting(companyId, title, desc)
+ipcMain.handle('db:create-meeting', (_e, { companyId, title, desc, service }) =>
+  db.createMeeting(companyId, title, desc, service)
 );
 
 ipcMain.handle('db:save-meeting-data', (_e, { meetingId, ...data }) =>

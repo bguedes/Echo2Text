@@ -1,4 +1,7 @@
-# Echo2Text — Real-time Meeting Transcription & Analysis
+<p align="center">
+  <img src="electron/renderer/assets/icon-echo2text.svg" height="80" alt="Echo2Text icon" />&nbsp;&nbsp;&nbsp;
+  <img src="electron/renderer/assets/text-echo2text.svg" height="68" alt="echo2text" />
+</p>
 
 Desktop application (Windows / macOS) for live meeting transcription with automatic speaker detection, question and action item detection, powered by the **NeMo Parakeet TDT 0.6B v3** ASR model (ONNX) and a local LLM via **LMStudio**.
 

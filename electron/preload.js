@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     getMeetings:     (companyId)              => ipcRenderer.invoke('db:get-meetings', { companyId }),
     getMeeting:      (id)                     => ipcRenderer.invoke('db:get-meeting', { id }),
-    createMeeting:   (companyId, title, desc) => ipcRenderer.invoke('db:create-meeting', { companyId, title, desc }),
+    createMeeting:   (companyId, title, desc, service) => ipcRenderer.invoke('db:create-meeting', { companyId, title, desc, service }),
     saveMeetingData: (meetingId, data)        => ipcRenderer.invoke('db:save-meeting-data', { meetingId, ...data }),
     deleteMeeting:   (id)                     => ipcRenderer.invoke('db:delete-meeting', { id }),
     toggleAction:    (actionId, status)       => ipcRenderer.invoke('db:toggle-action-status', { actionId, status }),
