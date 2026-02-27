@@ -185,11 +185,32 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});
+
+// Cleanly terminate the Python server before exiting
+let _isQuitting = false;
+app.on('before-quit', (event) => {
+  if (_isQuitting) return;
+  event.preventDefault();
+  _isQuitting = true;
+
+  const doExit = () => app.exit(0);
+
   if (pythonProc) {
+    // Server was spawned by Electron — kill directly
     pythonProc.kill();
     pythonProc = null;
+    doExit();
+    return;
   }
-  if (process.platform !== 'darwin') app.quit();
+
+  // Server was started externally (start.bat) — ask it to shutdown via HTTP
+  const req = http.get('http://127.0.0.1:8765/shutdown', () => {
+    setTimeout(doExit, 200);
+  });
+  req.setTimeout(2000, () => { req.destroy(); doExit(); });
+  req.on('error', doExit);
 });
 
 app.on('activate', () => {

@@ -115,11 +115,57 @@ Produce a summary in strict JSON (no markdown):
 {"summary":"summary in 3-5 sentences","next_steps":"complete list of all actions and decisions — re-read the transcript to include any action that may have been missed (obligations, named assignments, commitments made)"}
 Reply ONLY with the JSON.`;
 
+// ─── Key-points prompts (real-time incremental, FR + EN) ──────────────────────
+const SYSTEM_PROMPT_KEYPOINTS = `Tu es un assistant de réunion local, spécialisé en synthèse fiable et extraction d'éléments actionnables.
+Tu reçois les fragments successifs d'une transcription audio en cours.
+
+À chaque nouveau fragment, identifie UNIQUEMENT les nouveaux points clés dans CE fragment : \
+décisions prises, faits importants, chiffres, dates, engagements, risques ou sujets clés mentionnés.
+
+RÈGLES ABSOLUES DE FORMAT :
+- Une ligne par point clé, préfixe obligatoire "POINT: ".
+- Pas de titre, numérotation, tableau, markdown, explication.
+- Ne JAMAIS inventer : si une info (chiffre, date, owner) n'est pas explicite dans le texte, ne l'inclus pas.
+- Déduplique : si un point est déjà connu des échanges précédents, ne le répète pas.
+- Détecte la langue du fragment (FR/EN) et réponds dans cette même langue.
+- Si aucun nouveau point clé : répondre uniquement RIEN.
+
+Exemples valides :
+POINT: Décision de migrer vers le nouveau système d'ici Q2.
+POINT: Budget alloué : 50 000 € pour la phase 1.
+POINT: Risque identifié — délai fournisseur pourrait décaler la livraison.
+
+Exemple si rien :
+RIEN`;
+
+const SYSTEM_PROMPT_KEYPOINTS_EN = `You are a local meeting assistant specialized in reliable synthesis and actionable extraction.
+You receive successive fragments of an ongoing audio transcription.
+
+For each new fragment, identify ONLY the new key points in THIS fragment: \
+decisions made, important facts, figures, dates, commitments, risks, or key topics mentioned.
+
+ABSOLUTE FORMAT RULES:
+- One line per key point, mandatory prefix "POINT:".
+- No title, numbering, table, markdown, explanation.
+- NEVER invent: if information (figure, date, owner) is not explicit in the text, do not include it.
+- Deduplicate: if a point is already known from previous exchanges, do not repeat it.
+- Detect the language of the fragment (FR/EN) and reply in that same language.
+- If no new key points: reply only NOTHING.
+
+Valid examples:
+POINT: Decision to migrate to the new system by Q2.
+POINT: Allocated budget: $50,000 for phase 1.
+POINT: Risk identified — supplier delay could push back delivery.
+
+Example if nothing:
+NOTHING`;
+
 // ─── Prompt getters (dynamic by language) ────────────────────────────────────
 function promptQuestions() { return language === 'fr' ? SYSTEM_PROMPT_QUESTIONS : SYSTEM_PROMPT_QUESTIONS_EN; }
 function promptAnswer()    { return language === 'fr' ? SYSTEM_PROMPT_ANSWER    : SYSTEM_PROMPT_ANSWER_EN; }
 function promptActions()   { return language === 'fr' ? SYSTEM_PROMPT_ACTIONS   : SYSTEM_PROMPT_ACTIONS_EN; }
 function promptSummary()   { return language === 'fr' ? SYSTEM_PROMPT_SUMMARY   : SYSTEM_PROMPT_SUMMARY_EN; }
+function promptKeyPoints() { return language === 'fr' ? SYSTEM_PROMPT_KEYPOINTS : SYSTEM_PROMPT_KEYPOINTS_EN; }
 
 // ─── Global state ─────────────────────────────────────────────────────────────
 let ws          = null;
@@ -133,10 +179,19 @@ let allSentences = [];
 let lastSentIdx  = 0;
 let speakerNames = {};  // { "SPEAKER_0": "Alice", "SPEAKER_1": "Bob" }
 
+// Key points: [string] — real-time incremental
+let keyPoints = [];
+let lastKIdx  = 0;
+
 // Questions: [{ text, answer, answering }]
 let questions = [];
 // Actions: [string] — detected at the end of a meeting
 let actions   = [];
+
+// LLM — real-time key-point extraction (with history)
+let llmHistoryK = [{ role: 'system', content: promptKeyPoints() }];
+let llmQueueK   = [];
+let llmBusyK    = false;
 
 // LLM — real-time question detection (with history)
 let llmHistoryQ = [{ role: 'system', content: promptQuestions() }];
@@ -155,6 +210,7 @@ let llmConnected = false;
 let currentMeetingId    = null;
 let currentCompanyName  = '';
 let currentMeetingTitle = '';
+let currentNumSpeakers  = 2;
 let mediaRecorder       = null;
 let audioChunks         = [];
 let recordingStartTime  = null;
@@ -173,6 +229,7 @@ const btnCsv        = document.getElementById('btn-csv');
 const btnSrt        = document.getElementById('btn-srt');
 const urlInput      = document.getElementById('lmstudio-url');
 const transcriptEl  = document.getElementById('transcript-area');
+const keypointsList = document.getElementById('keypoints-list');
 const questionsList = document.getElementById('questions-list');
 const actionsList   = document.getElementById('actions-list');
 const tsBody        = document.getElementById('timestamps-body');
@@ -224,7 +281,7 @@ function connectWS() {
 
   ws.onopen = () => {
     const sr = audioCtx ? audioCtx.sampleRate : 16000;
-    ws.send(JSON.stringify({ type: 'config', sampleRate: sr }));
+    ws.send(JSON.stringify({ type: 'config', sampleRate: sr, numSpeakers: currentNumSpeakers }));
   };
 
   ws.onmessage = (evt) => {
@@ -245,6 +302,7 @@ function handleTranscript(msg) {
   renderTranscriptDisplay();
   renderSpeakersPanel();
   renderTimestamps();
+  maybeTriggerKeyPoints();
   maybeTriggerQuestions();
 
   if (msg.final) {
@@ -357,6 +415,77 @@ function renderTimestamps() {
       renderTimestamps();
       btnCsv.disabled = allSentences.length === 0;
       btnSrt.disabled = allSentences.length === 0;
+    });
+  });
+}
+
+// ─── LLM — Real-time key-point extraction ────────────────────────────────────
+function maybeTriggerKeyPoints() {
+  const newSents = allSentences.slice(lastKIdx);
+  if (!newSents.length) return;
+  const fragment = buildSpeakerText(newSents) || newSents.map(s => s.segment).join(' ');
+  lastKIdx = allSentences.length;
+  llmQueueK.push(fragment);
+  processKeyPointsQueue();
+}
+
+async function processKeyPointsQueue() {
+  if (llmBusyK || llmQueueK.length === 0) return;
+  llmBusyK = true;
+
+  const fragment = llmQueueK.shift();
+  llmHistoryK.push({ role: 'user', content: fragment });
+
+  try {
+    await checkLmStudio();
+    if (!llmConnected) { llmHistoryK.pop(); llmBusyK = false; return; }
+
+    const url  = urlInput.value.trim();
+    const resp = await fetch(url + '/chat/completions', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+      body:    JSON.stringify({
+        model: llmModelId, messages: llmHistoryK,
+        temperature: 0.1, max_tokens: 400, stream: true,
+      }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const { fullResponse } = await streamSSE(resp, (line) => {
+      if (line.toUpperCase().startsWith('POINT:')) {
+        const text = line.slice(6).trim();
+        if (text && !keyPoints.includes(text)) {
+          keyPoints.push(text);
+          renderKeyPoints();
+        }
+      }
+    });
+
+    llmHistoryK.push({ role: 'assistant', content: fullResponse });
+  } catch (e) {
+    console.error('[llm-kp]', e);
+    llmHistoryK.pop();
+  }
+
+  llmBusyK = false;
+  if (llmQueueK.length > 0) processKeyPointsQueue();
+}
+
+function renderKeyPoints() {
+  if (!keypointsList) return;
+  if (keyPoints.length === 0) { keypointsList.innerHTML = ''; return; }
+  keypointsList.innerHTML = keyPoints.map((t, i) => `
+    <div class="list-item">
+      <span class="list-idx kp-dot">•</span>
+      <span>${escHtml(t)}</span>
+      <button class="btn-delete-item" data-idx="${i}" title="Delete">&#10005;</button>
+    </div>
+  `).join('');
+  keypointsList.querySelectorAll('.btn-delete-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx, 10);
+      keyPoints.splice(idx, 1);
+      renderKeyPoints();
     });
   });
 }
@@ -612,6 +741,7 @@ async function autoSave() {
   try {
     await window.electronAPI.db.saveMeetingData(currentMeetingId, {
       sentences:    allSentences,
+      keyPoints,
       questions:    questions.map(q => ({ text: q.text, answer: q.answer || '' })),
       actions,
       summary:      summaryText,
@@ -832,7 +962,7 @@ async function startFileTranscription(file) {
   }
 
   // 3. Send config (in case WS was already open)
-  ws.send(JSON.stringify({ type: 'config', sampleRate: 16000 }));
+  ws.send(JSON.stringify({ type: 'config', sampleRate: 16000, numSpeakers: currentNumSpeakers }));
 
   // 4. Initialize recording state
   recording          = true;
@@ -841,6 +971,7 @@ async function startFileTranscription(file) {
   summaryText        = '';
   nextStepsText      = '';
   audioChunks        = [];
+  document.getElementById('nav-record').classList.add('recording');
   btnStart.disabled  = true;
   btnStop.disabled   = false;
   btnCsv.disabled    = true;
@@ -862,6 +993,7 @@ async function startFileTranscription(file) {
     ws.send(JSON.stringify({ type: 'stop' }));
   }
   recording         = false;
+  document.getElementById('nav-record').classList.remove('recording');
   btnStart.disabled = false;
   btnStop.disabled  = true;
   setDot(dotMic, 'red');
@@ -936,6 +1068,7 @@ async function startRecording() {
   recording = true;
   connectWS();
   setDot(dotMic, 'orange');
+  document.getElementById('nav-record').classList.add('recording');
   btnStart.disabled = true;
   btnStop.disabled  = false;
   btnCsv.disabled   = true;
@@ -965,6 +1098,7 @@ function stopRecording() {
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
   if (audioCtx)    { audioCtx.close(); audioCtx = null; }
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'stop' }));
+  document.getElementById('nav-record').classList.remove('recording');
   btnStart.disabled = false;
   btnStop.disabled  = true;
   setDot(dotMic, 'red');
@@ -977,6 +1111,7 @@ function resetAll() {
   currentMeetingId    = null;
   currentCompanyName  = '';
   currentMeetingTitle = '';
+  currentNumSpeakers  = 2;
   audioChunks         = [];
   savedAudioPath      = '';
   summaryText         = '';
@@ -986,9 +1121,14 @@ function resetAll() {
 
   allSentences = [];
   lastSentIdx  = 0;
+  lastKIdx     = 0;
   speakerNames = {};
+  keyPoints    = [];
   questions    = [];
   actions      = [];
+  llmHistoryK  = [{ role: 'system', content: promptKeyPoints() }];
+  llmQueueK    = [];
+  llmBusyK     = false;
   llmHistoryQ  = [{ role: 'system', content: promptQuestions() }];
   llmQueueQ    = [];
   llmBusyQ     = false;
@@ -1000,6 +1140,7 @@ function resetAll() {
   if (tDisplay) tDisplay.innerHTML = '';
   const sPanel = document.getElementById('speakers-panel');
   if (sPanel) sPanel.classList.add('hidden');
+  if (keypointsList) keypointsList.innerHTML = '';
   questionsList.innerHTML = '';
   actionsList.innerHTML   = '';
   tsBody.innerHTML        = '';
@@ -1013,10 +1154,11 @@ function resetAll() {
 }
 
 // ─── Meeting context management ───────────────────────────────────────────────
-function setCurrentMeeting(meetingId, companyName, meetingTitle) {
+function setCurrentMeeting(meetingId, companyName, meetingTitle, numSpeakers) {
   currentMeetingId    = meetingId;
   currentCompanyName  = companyName;
   currentMeetingTitle = meetingTitle;
+  currentNumSpeakers  = numSpeakers || 2;
   ctxCompany.textContent = companyName;
   ctxTitle.textContent   = meetingTitle;
   meetingCtxBar.classList.remove('hidden');
@@ -1167,6 +1309,160 @@ function openMeetingSetup() {
   }
 }
 
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+document.getElementById('nav-record').addEventListener('click', () => {
+  // If library/history is open, just close it and return to capture view
+  if (document.getElementById('shell').classList.contains('lib-open')) {
+    if (typeof window._libToggle === 'function') window._libToggle();
+    return;
+  }
+  if (recording) {
+    stopRecording();
+  } else {
+    startRecording();
+  }
+});
+
+document.getElementById('nav-history').addEventListener('click', () => {
+  if (typeof window._libToggle === 'function') window._libToggle();
+});
+
+document.getElementById('btn-sidebar-toggle').addEventListener('click', () => {
+  const sidebar  = document.getElementById('sidebar');
+  const expanded = sidebar.classList.toggle('expanded');
+  localStorage.setItem('sidebar-expanded', expanded ? '1' : '0');
+});
+
+// Restore sidebar state
+if (localStorage.getItem('sidebar-expanded') === '1') {
+  document.getElementById('sidebar').classList.add('expanded');
+}
+
+// ─── Q&A panel toggle ─────────────────────────────────────────────────────────
+document.getElementById('btn-qa-toggle').addEventListener('click', () => {
+  const panel      = document.getElementById('qa-panel');
+  const isExpanded = panel.classList.toggle('expanded');
+  localStorage.setItem('qa-panel-collapsed', isExpanded ? '0' : '1');
+  if (isExpanded) {
+    // Re-apply saved custom width when expanding
+    const w = localStorage.getItem('qa-panel-width');
+    if (w) panel.style.width = w;
+  } else {
+    // Clear inline width so the CSS rule (36 px) can take over
+    panel.style.width = '';
+  }
+});
+
+// Restore Q&A panel state (default: expanded)
+(function () {
+  const panel = document.getElementById('qa-panel');
+  if (localStorage.getItem('qa-panel-collapsed') === '1') {
+    panel.classList.remove('expanded');
+    panel.style.width = ''; // ensure inline width doesn't override CSS
+  } else {
+    const w = localStorage.getItem('qa-panel-width');
+    if (w) panel.style.width = w;
+  }
+})();
+
+// ─── Resize: Q&A panel width (drag the divider-h) ────────────────────────────
+(function () {
+  const handle = document.getElementById('divider-qa');
+  const panel  = document.getElementById('qa-panel');
+
+  handle.addEventListener('mousedown', (e) => {
+    // If panel is collapsed, just expand it
+    if (!panel.classList.contains('expanded')) {
+      panel.classList.add('expanded');
+      localStorage.setItem('qa-panel-collapsed', '0');
+      return;
+    }
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = panel.offsetWidth;
+
+    panel.classList.add('resizing');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor     = 'col-resize';
+    handle.classList.add('dragging');
+
+    function onMove(e) {
+      // Moving left → larger panel (we are to the left of the panel)
+      const delta = startX - e.clientX;
+      const newW  = Math.max(180, Math.min(560, startW + delta));
+      panel.style.width = newW + 'px';
+    }
+
+    function onUp() {
+      panel.classList.remove('resizing');
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor     = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      localStorage.setItem('qa-panel-width', panel.style.width);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+})();
+
+// ─── Resize: transcript ↕ segments (drag the divider-v) ─────────────────────
+(function () {
+  const handle  = document.getElementById('divider-segments');
+  const topEl   = document.getElementById('live-text');
+  const bottomEl = document.getElementById('timestamps-card');
+
+  handle.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    const startY  = e.clientY;
+    const startH1 = topEl.offsetHeight;
+    const startH2 = bottomEl.offsetHeight;
+
+    handle.classList.add('dragging');
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor     = 'row-resize';
+
+    function onMove(e) {
+      const delta = e.clientY - startY;
+      const newH1 = Math.max(80, startH1 + delta);
+      const newH2 = Math.max(80, startH2 - delta);
+      topEl.style.flex    = `0 0 ${newH1}px`;
+      bottomEl.style.flex = `0 0 ${newH2}px`;
+    }
+
+    function onUp() {
+      handle.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      document.body.style.cursor     = '';
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+    }
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+})();
+
+document.getElementById('btn-toggle-segments').addEventListener('click', function () {
+  const card    = document.getElementById('timestamps-card');
+  const divider = document.getElementById('divider-segments');
+  const app     = document.getElementById('app');
+  const showing = !card.classList.contains('hidden');
+
+  card.classList.toggle('hidden',   showing);
+  divider.classList.toggle('hidden', showing);
+  app.classList.toggle('show-segments', !showing);
+  this.classList.toggle('active', !showing);
+
+  // Reset inline sizes when hiding so CSS rules take over again
+  if (showing) {
+    document.getElementById('live-text').style.flex = '';
+    card.style.flex = '';
+  }
+});
+
 // ─── Theme ────────────────────────────────────────────────────────────────────
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
@@ -1180,7 +1476,7 @@ document.querySelectorAll('.theme-btn').forEach(btn => {
 });
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
-applyTheme(localStorage.getItem('parakeet-theme') || 'dark');
+applyTheme(localStorage.getItem('parakeet-theme') || 'light');
 pollServer();
 checkLmStudio();
 setInterval(checkLmStudio, 10000);

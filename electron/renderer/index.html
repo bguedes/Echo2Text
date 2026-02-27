@@ -3,161 +3,246 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self'; media-src 'self' blob:;" />
+        content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob:;" />
   <title>Echo2Text – Transcription & Analysis</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div id="app">
 
-  <!-- ── Header ─────────────────────────────────────────────────────────── -->
-  <header>
-    <h1>Echo2Text &mdash; Transcription &amp; Real Time Analysis</h1>
-    <div class="header-right">
-      <div class="theme-switcher">
-        <button class="theme-btn active" data-theme="dark"  title="Dark"></button>
-        <button class="theme-btn"        data-theme="light" title="Light"></button>
-        <button class="theme-btn"        data-theme="nord"  title="Nord"></button>
-        <button class="theme-btn"        data-theme="sepia" title="Sepia"></button>
-      </div>
-      <div class="status-bar">
-        <div class="status-item">
-          <span class="dot" id="dot-server"></span>
-          <span>ASR Server</span>
+<!-- ── Shell ───────────────────────────────────────────────────────────────── -->
+<div id="shell">
+
+  <!-- ── Left sidebar ────────────────────────────────────────────────────── -->
+  <nav id="sidebar">
+
+    <button class="nav-btn" id="nav-record" title="Start / Stop recording">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8"  y1="22" x2="16" y2="22"/>
+      </svg>
+      <span class="nav-label">Record</span>
+    </button>
+
+    <button class="nav-btn" id="nav-history" title="Meeting history">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 3v5h5"/>
+        <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+        <polyline points="12 7 12 12 16 14"/>
+      </svg>
+      <span class="nav-label">History</span>
+    </button>
+
+    <div class="sidebar-spacer"></div>
+
+    <button class="nav-btn" id="btn-sidebar-toggle" title="Expand sidebar">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="9 18 15 12 9 6"/>
+      </svg>
+      <span class="nav-label">Collapse</span>
+    </button>
+
+  </nav>
+
+  <!-- ── Main content ─────────────────────────────────────────────────────── -->
+  <div id="app">
+
+    <!-- ── Header ─────────────────────────────────────────────────────────── -->
+    <header>
+      <h1>Echo2Text &mdash; Transcription &amp; Real Time Analysis</h1>
+      <div class="header-right">
+        <div class="theme-switcher">
+          <button class="theme-btn"        data-theme="dark"  title="Dark"></button>
+          <button class="theme-btn active" data-theme="light" title="Light"></button>
+          <button class="theme-btn"        data-theme="nord"  title="Nord"></button>
+          <button class="theme-btn"        data-theme="sepia" title="Sepia"></button>
         </div>
-        <div class="status-item">
-          <span class="dot" id="dot-lmstudio"></span>
-          <span>LMStudio</span>
-        </div>
-        <div class="status-item">
-          <span class="dot" id="dot-mic"></span>
-          <span>Microphone</span>
+        <div class="status-bar">
+          <div class="status-item">
+            <span class="dot" id="dot-server"></span>
+            <span>ASR Server</span>
+          </div>
+          <div class="status-item">
+            <span class="dot" id="dot-lmstudio"></span>
+            <span>LMStudio</span>
+          </div>
+          <div class="status-item">
+            <span class="dot" id="dot-mic"></span>
+            <span>Microphone</span>
+          </div>
         </div>
       </div>
-      <button id="btn-library">&#128193; Library</button>
-    </div>
-  </header>
+    </header>
 
-  <!-- ── Controls ───────────────────────────────────────────────────────── -->
-  <div class="controls">
-    <button id="btn-start">&#9654; Start</button>
-    <button id="btn-stop"  disabled>&#9632; Stop</button>
-    <button id="btn-reset">&#8634; Reset</button>
-    <div class="lang-toggle">
-      <button class="lang-btn active" data-lang="fr">FR</button>
-      <button class="lang-btn"        data-lang="en">EN</button>
-    </div>
-    <div class="audio-source-group">
-      <label for="audio-source-select">&#127908;</label>
-      <select id="audio-source-select"><option value="mic:default">System microphone</option></select>
-      <button id="btn-refresh-sources" title="Refresh">&#8635;</button>
-    </div>
-    <div id="url-source-row" class="url-source-row hidden">
-      <input id="url-web-input" type="text" placeholder="https://youtube.com/watch?v=… or any URL" />
-      <button id="btn-open-url">&#8599; Open</button>
-      <button id="btn-close-url">&#10005; Close</button>
-    </div>
-    <input type="file" id="audio-file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none" />
-    <div class="url-group">
-      <label for="lmstudio-url">LMStudio URL</label>
-      <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" />
-    </div>
-  </div>
-
-  <!-- ── Meeting context bar ────────────────────────────────────────────── -->
-  <div id="meeting-context-bar" class="hidden">
-    <span class="ctx-label">Active meeting:</span>
-    <span id="ctx-company" class="ctx-company"></span>
-    <span class="ctx-sep">›</span>
-    <span id="ctx-title" class="ctx-title"></span>
-    <button id="btn-change-meeting">Change</button>
-  </div>
-
-  <!-- ── Speakers panel ────────────────────────────────────────────────────── -->
-  <div id="speakers-panel" class="card hidden">
-    <div class="card-label">Speakers <span class="muted-label">(click to rename)</span></div>
-    <div id="speakers-list" class="speakers-list"></div>
-  </div>
-
-  <!-- ── Transcription ───────────────────────────────────────────────────── -->
-  <div class="card" id="live-text" style="flex: 0 0 200px;">
-    <div class="card-label">Live Transcription</div>
-    <div id="transcript-display" class="transcript-display"></div>
-    <textarea id="transcript-area" readonly style="display:none"></textarea>
-  </div>
-
-  <!-- ── Q&A ────────────────────────────────────────────────────────────── -->
-  <div class="qa-row">
-    <div class="card">
-      <div class="card-label">Detected questions <span class="label-badge">real-time</span></div>
-      <div class="list-box" id="questions-list"></div>
-    </div>
-    <div class="card">
-      <div class="card-label">Action items <span class="label-badge">end of meeting</span></div>
-      <div class="list-box" id="actions-list"></div>
-    </div>
-  </div>
-
-  <!-- ── Summary ───────────────────────────────────────────────────────── -->
-  <div class="card hidden" id="summary-card">
-    <div class="card-label">Meeting Summary <span class="label-badge">end of meeting</span></div>
-    <div id="summary-content"></div>
-  </div>
-
-  <!-- ── Export ─────────────────────────────────────────────────────────── -->
-  <div class="export-row">
-    <button id="btn-csv" disabled>&#8595; CSV</button>
-    <button id="btn-srt" disabled>&#8595; SRT</button>
-  </div>
-
-  <!-- ── Timestamps table ───────────────────────────────────────────────── -->
-  <div class="card" id="timestamps-card" style="flex: 1; min-height: 0;">
-    <div class="card-label">Timestamped segments</div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Start (s)</th>
-            <th>End (s)</th>
-            <th>Speaker</th>
-            <th>Segment</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="timestamps-body"></tbody>
-      </table>
-    </div>
-  </div>
-
-</div>
-
-<!-- ── Library overlay ────────────────────────────────────────────────────── -->
-<div id="library-overlay" class="hidden">
-  <div id="library-panel">
-    <div id="lib-companies-col">
-      <div class="lib-col-header">
-        <span>Companies</span>
-        <button id="btn-new-company" class="btn-icon">+</button>
+    <!-- ── Controls ───────────────────────────────────────────────────────── -->
+    <div class="controls">
+      <button id="btn-start">&#9654; Start</button>
+      <button id="btn-stop"  disabled>&#9632; Stop</button>
+      <button id="btn-reset">&#8634; Reset</button>
+      <div class="lang-toggle">
+        <button class="lang-btn active" data-lang="fr">FR</button>
+        <button class="lang-btn"        data-lang="en">EN</button>
       </div>
-      <div id="lib-companies-list"></div>
+      <div class="audio-source-group">
+        <label for="audio-source-select">&#127908;</label>
+        <select id="audio-source-select"><option value="mic:default">System microphone</option></select>
+        <button id="btn-refresh-sources" title="Refresh">&#8635;</button>
+      </div>
+      <div id="url-source-row" class="url-source-row hidden">
+        <input id="url-web-input" type="text" placeholder="https://youtube.com/watch?v=… or any URL" />
+        <button id="btn-open-url">&#8599; Open</button>
+        <button id="btn-close-url">&#10005; Close</button>
+      </div>
+      <input type="file" id="audio-file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none" />
+      <div class="url-group">
+        <label for="lmstudio-url">LMStudio URL</label>
+        <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" />
+      </div>
     </div>
-    <div id="lib-content-col">
-      <div id="lib-meetings-pane" class="hidden">
+
+    <!-- ── Meeting context bar ────────────────────────────────────────────── -->
+    <div id="meeting-context-bar" class="hidden">
+      <span class="ctx-label">Active meeting:</span>
+      <span id="ctx-company" class="ctx-company"></span>
+      <span class="ctx-sep">›</span>
+      <span id="ctx-title" class="ctx-title"></span>
+      <button id="btn-change-meeting">Change</button>
+    </div>
+
+    <!-- ── Speakers panel ────────────────────────────────────────────────── -->
+    <div id="speakers-panel" class="card hidden">
+      <div class="card-label">Speakers <span class="muted-label">(click to rename)</span></div>
+      <div id="speakers-list" class="speakers-list"></div>
+    </div>
+
+    <!-- ── Live Transcription ─────────────────────────────────────────────── -->
+    <div class="card" id="live-text">
+      <div class="card-label">Live Transcription</div>
+      <div id="transcript-display" class="transcript-display"></div>
+      <textarea id="transcript-area" readonly style="display:none"></textarea>
+    </div>
+
+    <!-- ── Vertical resize handle (transcript ↕ segments, hidden until segments shown) -->
+    <div class="divider-v hidden" id="divider-segments"></div>
+
+    <!-- ── Timestamps table (hidden by default) ──────────────────────────── -->
+    <div class="card hidden" id="timestamps-card">
+      <div class="card-label">Timestamped segments</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Start (s)</th>
+              <th>End (s)</th>
+              <th>Speaker</th>
+              <th>Segment</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="timestamps-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── Summary ────────────────────────────────────────────────────────── -->
+    <div class="card hidden" id="summary-card">
+      <div class="card-label">Meeting Summary <span class="label-badge">end of meeting</span></div>
+      <div id="summary-content"></div>
+    </div>
+
+    <!-- ── Export ────────────────────────────────────────────────────────── -->
+    <div class="export-row">
+      <button id="btn-csv" disabled>&#8595; CSV</button>
+      <button id="btn-srt" disabled>&#8595; SRT</button>
+      <button id="btn-toggle-segments" title="Show / hide timestamped segments">&#9776; Segments</button>
+    </div>
+
+  </div><!-- /#app -->
+
+  <!-- ── Horizontal resize handle (app ↔ qa-panel) ────────────────────────── -->
+  <div class="divider-h" id="divider-qa"></div>
+
+  <!-- ── Right Q&A panel ──────────────────────────────────────────────────── -->
+  <aside id="qa-panel" class="expanded">
+
+    <div class="qa-panel-rail">
+      <button class="nav-btn" id="btn-qa-toggle" title="Expand / collapse Q&A">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="15 18 9 12 15 6"/>
+        </svg>
+      </button>
+      <div class="qa-rail-sep"></div>
+      <div class="qa-rail-badge" title="Key points">K</div>
+      <div class="qa-rail-badge" title="Questions">Q</div>
+      <div class="qa-rail-badge" title="Actions">A</div>
+    </div>
+
+    <div class="qa-panel-content">
+
+      <div class="qa-section">
+        <div class="qa-section-header">
+          <span class="card-label">Key points <span class="label-badge">real-time</span></span>
+        </div>
+        <div class="list-box" id="keypoints-list"></div>
+      </div>
+
+      <div class="qa-section">
+        <div class="qa-section-header">
+          <span class="card-label">Questions <span class="label-badge">real-time</span></span>
+        </div>
+        <div class="list-box" id="questions-list"></div>
+      </div>
+
+      <div class="qa-section">
+        <div class="qa-section-header">
+          <span class="card-label">Actions <span class="label-badge">end of meeting</span></span>
+        </div>
+        <div class="list-box" id="actions-list"></div>
+      </div>
+
+    </div>
+
+  </aside>
+
+  <!-- ── Library panel (inline right, slides in) ──────────────────────────── -->
+  <aside id="library-panel">
+    <div class="lib-panel-header">
+      <span class="lib-panel-title">Library</span>
+      <button id="btn-close-library" class="btn-icon-sm" title="Close">&#10005;</button>
+    </div>
+    <div class="lib-panel-body">
+
+      <div id="lib-companies-col">
         <div class="lib-col-header">
-          <span id="lib-company-name-title"></span>
-          <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
+          <span>Companies</span>
+          <button id="btn-new-company" class="btn-icon">+</button>
         </div>
-        <div id="lib-meetings-list"></div>
+        <div id="lib-companies-list"></div>
       </div>
-      <div id="lib-meeting-detail" class="hidden"></div>
-      <div id="lib-empty-hint">
-        <p>Select a company to view its meetings.</p>
+
+      <div id="lib-content-col">
+        <div id="lib-meetings-pane" class="hidden">
+          <div class="lib-col-header">
+            <span id="lib-company-name-title"></span>
+            <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
+          </div>
+          <div id="lib-meetings-list"></div>
+        </div>
+        <div id="lib-meeting-detail" class="hidden"></div>
+        <div id="lib-empty-hint">
+          <p>Select a company to view its meetings.</p>
+        </div>
       </div>
+
     </div>
-  </div>
-  <button id="btn-close-library" class="btn-close-overlay">&#10005;</button>
-</div>
+  </aside>
+
+</div><!-- /#shell -->
 
 <!-- ── Meeting setup modal ────────────────────────────────────────────────── -->
 <div id="meeting-setup-modal" class="hidden">
@@ -184,6 +269,16 @@
     <div class="modal-field">
       <label>Description <span class="muted-label">(optional)</span></label>
       <textarea id="modal-desc" placeholder="Context, agenda…" rows="3"></textarea>
+    </div>
+    <div class="modal-field">
+      <label>Number of speakers</label>
+      <select id="modal-num-speakers">
+        <option value="1">1 (solo)</option>
+        <option value="2" selected>2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+        <option value="5">5+</option>
+      </select>
     </div>
     <div class="modal-actions">
       <button id="modal-btn-cancel">Cancel</button>
