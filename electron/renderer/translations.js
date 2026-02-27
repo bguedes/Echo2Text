@@ -11,7 +11,8 @@ const TRANSLATIONS = {
     'nav.collapse': 'Collapse',
 
     // Header
-    'header.title': 'Echo2Text — Transcription & Real Time Analysis',
+    //'header.title': 'Echo2Text — Transcription & Real Time Analysis',
+    'header.title': 'Echo2Text',
 
     // Status bar
     'status.asr':      'ASR Server',
