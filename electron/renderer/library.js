@@ -8,7 +8,7 @@ let meetings           = [];
 let selectedMeetingId  = null;
 
 // ─── DOM elements ─────────────────────────────────────────────────────────────
-const libraryOverlay      = document.getElementById('library-overlay');
+const libraryPanel        = document.getElementById('library-panel');
 const libCompaniesList    = document.getElementById('lib-companies-list');
 const libCompanyNameTitle = document.getElementById('lib-company-name-title');
 const libMeetingsList     = document.getElementById('lib-meetings-list');
@@ -20,19 +20,22 @@ const meetingSetupModal     = document.getElementById('meeting-setup-modal');
 const modalCompanySelect    = document.getElementById('modal-company-select');
 const modalTitle            = document.getElementById('modal-title');
 const modalDesc             = document.getElementById('modal-desc');
+const modalNumSpeakers      = document.getElementById('modal-num-speakers');
 const modalNewCompanyForm   = document.getElementById('modal-new-company-form');
 const modalNewCompanyName   = document.getElementById('modal-new-company-name');
 
 // ─── Library open / close ─────────────────────────────────────────────────────
 async function openLibrary() {
   libOpen = true;
-  libraryOverlay.classList.remove('hidden');
+  document.getElementById('shell').classList.add('lib-open');
+  document.getElementById('nav-history').classList.add('active');
   await loadCompanies();
 }
 
 function closeLibrary() {
   libOpen = false;
-  libraryOverlay.classList.add('hidden');
+  document.getElementById('shell').classList.remove('lib-open');
+  document.getElementById('nav-history').classList.remove('active');
 }
 
 async function loadCompanies() {
@@ -279,6 +282,7 @@ async function openMeetingSetup() {
   meetingSetupModal.classList.remove('hidden');
   modalTitle.value = '';
   modalDesc.value  = '';
+  modalNumSpeakers.value = '2';
   modalNewCompanyName.value = '';
   modalNewCompanyForm.classList.add('hidden');
   await populateCompanySelect();
@@ -324,7 +328,8 @@ async function confirmNewMeeting() {
   if (!title) { modalTitle.focus(); return; }
   if (!companyId) { alert('Please select or create a company.'); return; }
 
-  const desc = modalDesc.value.trim();
+  const desc        = modalDesc.value.trim();
+  const numSpeakers = parseInt(modalNumSpeakers.value, 10) || 2;
   try {
     const result = await window.electronAPI.db.createMeeting(companyId, title, desc);
     const meetingId = result.id;
@@ -338,7 +343,7 @@ async function confirmNewMeeting() {
 
     // Pass context to app.js
     if (typeof window._appSetCurrentMeeting === 'function') {
-      window._appSetCurrentMeeting(meetingId, companyName, title);
+      window._appSetCurrentMeeting(meetingId, companyName, title, numSpeakers);
     }
 
     closeMeetingSetup();
@@ -396,7 +401,6 @@ function formatDuration(sec) {
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
-document.getElementById('btn-library').addEventListener('click', openLibrary);
 document.getElementById('btn-close-library').addEventListener('click', closeLibrary);
 document.getElementById('btn-new-company').addEventListener('click', createCompanyFromLib);
 document.getElementById('btn-new-meeting-from-lib').addEventListener('click', () => {
@@ -424,3 +428,4 @@ document.querySelector('#meeting-setup-modal .modal-backdrop').addEventListener(
 
 // Expose for app.js
 window._libOpenMeetingSetup = openMeetingSetup;
+window._libToggle = () => { if (libOpen) closeLibrary(); else openLibrary(); };

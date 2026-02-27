@@ -6,16 +6,25 @@ import queue
 import struct
 import threading
 import time
+import warnings
+
+# Suppress harmless torchcodec/FFmpeg warning (pyannote falls back to tensor I/O)
+warnings.filterwarnings('ignore', message='torchcodec is not installed')
 
 from dotenv import load_dotenv
 load_dotenv()
 
+import onnxruntime as _ort
 import onnx_asr
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-providers     = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+# Only include CUDA if actually available — avoids DLL-not-found spam at startup
+_available = _ort.get_available_providers()
+providers = [p for p in ['CUDAExecutionProvider', 'CPUExecutionProvider'] if p in _available]
+if not providers:
+    providers = ['CPUExecutionProvider']
 SAMPLE_RATE   = 16000
 CHUNK_SECONDS = 5   # more context per inference → better accuracy
 
@@ -97,7 +106,7 @@ def _cosine_sim(a, b):
     denom = np.linalg.norm(a) * np.linalg.norm(b)
     return float(np.dot(a, b) / denom) if denom > 0 else 0.0
 
-def _match_or_create_speaker(embedding, threshold=0.50):
+def _match_or_create_speaker(embedding, threshold=0.35):
     global _speaker_counter
     embedding = np.array(embedding).flatten()
     with _registry_lock:
@@ -121,7 +130,7 @@ def _match_or_create_speaker(embedding, threshold=0.50):
 
 # ─── Audio chunk diarization ──────────────────────────────────────────────────
 
-def diarize_chunk(audio_float32, time_offset, sentences):
+def diarize_chunk(audio_float32, time_offset, sentences, num_speakers=None):
     """Assign a stable global speaker ID to each sentence. Modifies in-place."""
     if not _diarization_on:
         for s in sentences:
@@ -132,7 +141,11 @@ def diarize_chunk(audio_float32, time_offset, sentences):
         waveform = torch.from_numpy(audio_float32).unsqueeze(0)
         input_dict = {"waveform": waveform, "sample_rate": SAMPLE_RATE}
 
-        result = _diar_pipeline(input_dict)
+        kwargs = {}
+        if num_speakers is not None:
+            kwargs['min_speakers'] = num_speakers
+            kwargs['max_speakers'] = num_speakers
+        result = _diar_pipeline(input_dict, **kwargs)
         # pyannote 3.x returns DiarizeOutput(speaker_diarization=Annotation, ...)
         # pyannote 2.x returns Annotation directly (has itertracks)
         if hasattr(result, 'itertracks'):
@@ -233,14 +246,14 @@ def _transcribe(audio_float32, time_offset):
 
 # ─── Background ASR thread ────────────────────────────────────────────────────
 
-def asr_worker(audio_q, result_q, stop_event):
+def asr_worker(audio_q, result_q, stop_event, num_speakers_ref=None):
     buffer, time_offset = np.array([], dtype=np.float32), 0.0
     while not stop_event.is_set():
         try:
             while True:
                 item = audio_q.get_nowait()
                 if item is None:
-                    _asr_flush(buffer, time_offset, result_q)
+                    _asr_flush(buffer, time_offset, result_q, num_speakers_ref)
                     return
                 buffer = np.concatenate([buffer, item])
         except queue.Empty:
@@ -250,8 +263,9 @@ def asr_worker(audio_q, result_q, stop_event):
         if len(buffer) >= min_samples:
             chunk = buffer[:min_samples]
             sents, text, last_end = _transcribe(chunk, time_offset)
+            ns = num_speakers_ref[0] if num_speakers_ref else None
             if sents:
-                diarize_chunk(chunk, time_offset, sents)
+                diarize_chunk(chunk, time_offset, sents, ns)
             result_q.put({'sentences': sents, 'text': text})
             if sents:
                 carry  = int(last_end * SAMPLE_RATE)
@@ -263,13 +277,14 @@ def asr_worker(audio_q, result_q, stop_event):
         else:
             time.sleep(0.05)
 
-    _asr_flush(buffer, time_offset, result_q)
+    _asr_flush(buffer, time_offset, result_q, num_speakers_ref)
 
-def _asr_flush(buffer, time_offset, result_q):
+def _asr_flush(buffer, time_offset, result_q, num_speakers_ref=None):
     if len(buffer) >= SAMPLE_RATE // 2:
         sents, text, _ = _transcribe(buffer, time_offset)
+        ns = num_speakers_ref[0] if num_speakers_ref else None
         if sents:
-            diarize_chunk(buffer, time_offset, sents)
+            diarize_chunk(buffer, time_offset, sents, ns)
         if sents or text:
             result_q.put({'sentences': sents, 'text': text, 'final': True})
 
@@ -281,6 +296,15 @@ app = FastAPI()
 async def health():
     return JSONResponse({"status": "ok", "model_ready": _model_ready})
 
+@app.get("/shutdown")
+async def shutdown():
+    """Called by Electron on window close to cleanly terminate the server."""
+    def _exit():
+        time.sleep(0.15)
+        os._exit(0)
+    threading.Thread(target=_exit, daemon=True).start()
+    return JSONResponse({"status": "shutting down"})
+
 @app.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
     await websocket.accept()
@@ -291,12 +315,13 @@ async def ws_transcribe(websocket: WebSocket):
         _speaker_counts     = {}
         _speaker_counter    = 0
 
-    audio_q  = queue.Queue()
-    asr_rq   = queue.Queue()
-    stop_evt = threading.Event()
+    audio_q          = queue.Queue()
+    asr_rq           = queue.Queue()
+    stop_evt         = threading.Event()
+    num_speakers_ref = [None]  # mutable — updated when config arrives
 
     asr_thread = threading.Thread(
-        target=asr_worker, args=(audio_q, asr_rq, stop_evt), daemon=True
+        target=asr_worker, args=(audio_q, asr_rq, stop_evt, num_speakers_ref), daemon=True
     )
     asr_thread.start()
 
@@ -337,6 +362,9 @@ async def ws_transcribe(websocket: WebSocket):
                 data = json.loads(msg['text'])
                 if data.get('type') == 'config':
                     sample_rate = int(data.get('sampleRate', SAMPLE_RATE))
+                    ns = data.get('numSpeakers')
+                    if ns is not None:
+                        num_speakers_ref[0] = int(ns)
                 elif data.get('type') == 'stop':
                     # End signal: flush and wait for the thread
                     audio_q.put(None)
