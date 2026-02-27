@@ -117,6 +117,7 @@ function getMeetings(companyId) {
           company_id:       m.company_id,
           title:            m.title,
           description:      m.description,
+          service:          m.service || '',
           recorded_at:      m.recorded_at,
           duration_seconds: m.duration_seconds,
           audio_path:       m.audio_path,
@@ -134,13 +135,14 @@ function getMeeting(id) {
   return m;
 }
 
-function createMeeting(companyId, title, description = '') {
+function createMeeting(companyId, title, description = '', service = '') {
   const id = nextId();
   const meeting = {
     id,
     company_id:       companyId,
     title,
     description,
+    service,
     recorded_at:      new Date().toISOString(),
     duration_seconds: 0,
     audio_path:       '',
@@ -169,7 +171,7 @@ function deleteMeeting(id) {
 }
 
 // ─── Bulk save (atomic) ───────────────────────────────────────────────────────
-function saveMeetingData(meetingId, { sentences, questions, actions, summary, nextSteps, duration, audioPath, speakerNames }) {
+function saveMeetingData(meetingId, { sentences, keyPoints, questions, actions, summary, nextSteps, duration, audioPath, speakerNames }) {
   const m = readJSON(meetingPath(meetingId), null);
   if (!m) return;
 
@@ -184,6 +186,7 @@ function saveMeetingData(meetingId, { sentences, questions, actions, summary, ne
   }));
 
   if (speakerNames !== undefined) m.speaker_names = speakerNames;
+  if (keyPoints    !== undefined) m.key_points    = (keyPoints || []).filter(Boolean);
 
   m.questions = (questions || []).map((q, i) => ({
     id:         nextId(),

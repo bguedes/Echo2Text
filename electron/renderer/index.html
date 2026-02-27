@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob:;" />
+        content="default-src 'self'; connect-src 'self' ws://127.0.0.1:8765 http://localhost:* http://127.0.0.1:*; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self'; media-src 'self' blob:;" />
   <title>Echo2Text – Transcription & Analysis</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -11,6 +11,31 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+<!-- ── Top bar (always visible) ─────────────────────────────────────────────── -->
+<header id="topbar">
+
+  <div id="brand">
+    <img src="assets/icon-echo2text.svg" width="36" height="36" alt="Echo2Text" id="brand-icon" />
+    <span id="wordmark" aria-label="echo2text">echo<span class="wm-accent">2</span><span class="wm-muted">text</span></span>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item">
+      <span class="dot" id="dot-server"></span>
+      <span data-i18n="status.asr">ASR Server</span>
+    </div>
+    <div class="status-item">
+      <span class="dot" id="dot-lmstudio"></span>
+      <span data-i18n="status.lmstudio">LMStudio</span>
+    </div>
+    <div class="status-item">
+      <span class="dot" id="dot-mic"></span>
+      <span data-i18n="status.mic">Microphone</span>
+    </div>
+  </div>
+
+</header>
 
 <!-- ── Shell ───────────────────────────────────────────────────────────────── -->
 <div id="shell">
@@ -25,7 +50,7 @@
         <line x1="12" y1="19" x2="12" y2="22"/>
         <line x1="8"  y1="22" x2="16" y2="22"/>
       </svg>
-      <span class="nav-label">Record</span>
+      <span class="nav-label" data-i18n="nav.record">Record</span>
     </button>
 
     <button class="nav-btn" id="nav-history" title="Meeting history">
@@ -34,7 +59,7 @@
         <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
         <polyline points="12 7 12 12 16 14"/>
       </svg>
-      <span class="nav-label">History</span>
+      <span class="nav-label" data-i18n="nav.history">History</span>
     </button>
 
     <div class="sidebar-spacer"></div>
@@ -44,41 +69,20 @@
         <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
         <circle cx="12" cy="12" r="3"/>
       </svg>
-      <span class="nav-label">Settings</span>
+      <span class="nav-label" data-i18n="nav.settings">Settings</span>
     </button>
 
     <button class="nav-btn" id="btn-sidebar-toggle" title="Expand sidebar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="9 18 15 12 9 6"/>
       </svg>
-      <span class="nav-label">Collapse</span>
+      <span class="nav-label" data-i18n="nav.collapse">Collapse</span>
     </button>
 
   </nav>
 
   <!-- ── Main content ─────────────────────────────────────────────────────── -->
   <div id="app">
-
-    <!-- ── Header ─────────────────────────────────────────────────────────── -->
-    <header>
-      <h1>Echo2Text &mdash; Transcription &amp; Real Time Analysis</h1>
-      <div class="header-right">
-        <div class="status-bar">
-          <div class="status-item">
-            <span class="dot" id="dot-server"></span>
-            <span>ASR Server</span>
-          </div>
-          <div class="status-item">
-            <span class="dot" id="dot-lmstudio"></span>
-            <span>LMStudio</span>
-          </div>
-          <div class="status-item">
-            <span class="dot" id="dot-mic"></span>
-            <span>Microphone</span>
-          </div>
-        </div>
-      </div>
-    </header>
 
     <!-- ── Controls ───────────────────────────────────────────────────────── -->
     <div class="controls">
@@ -115,7 +119,7 @@
 
     <!-- ── Live Transcription ─────────────────────────────────────────────── -->
     <div class="card" id="live-text">
-      <div class="card-label">Live Transcription</div>
+      <div class="card-label" data-i18n="card.live">Live Transcription</div>
       <div id="transcript-display" class="transcript-display"></div>
       <textarea id="transcript-area" readonly style="display:none"></textarea>
     </div>
@@ -125,16 +129,16 @@
 
     <!-- ── Timestamps table (hidden by default) ──────────────────────────── -->
     <div class="card hidden" id="timestamps-card">
-      <div class="card-label">Timestamped segments</div>
+      <div class="card-label" data-i18n="card.segments">Timestamped segments</div>
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>#</th>
-              <th>Start (s)</th>
-              <th>End (s)</th>
-              <th>Speaker</th>
-              <th>Segment</th>
+              <th data-i18n="seg.num">#</th>
+              <th data-i18n="seg.start">Start (s)</th>
+              <th data-i18n="seg.end">End (s)</th>
+              <th data-i18n="seg.speaker">Speaker</th>
+              <th data-i18n="seg.text">Segment</th>
               <th></th>
             </tr>
           </thead>
@@ -145,7 +149,7 @@
 
     <!-- ── Summary ────────────────────────────────────────────────────────── -->
     <div class="card hidden" id="summary-card">
-      <div class="card-label">Meeting Summary <span class="label-badge">end of meeting</span></div>
+      <div class="card-label" data-i18n="card.summary">Meeting Summary <span class="label-badge" data-i18n="badge.endofmeeting">end of meeting</span></div>
       <div id="summary-content"></div>
     </div>
 
@@ -180,21 +184,21 @@
 
       <div class="qa-section">
         <div class="qa-section-header">
-          <span class="card-label">Key points <span class="label-badge">real-time</span></span>
+          <span class="card-label"><span data-i18n="qa.keypoints">Key points</span> <span class="label-badge" data-i18n="badge.realtime">real-time</span></span>
         </div>
         <div class="list-box" id="keypoints-list"></div>
       </div>
 
       <div class="qa-section">
         <div class="qa-section-header">
-          <span class="card-label">Questions <span class="label-badge">real-time</span></span>
+          <span class="card-label"><span data-i18n="qa.questions">Questions</span> <span class="label-badge" data-i18n="badge.realtime">real-time</span></span>
         </div>
         <div class="list-box" id="questions-list"></div>
       </div>
 
       <div class="qa-section">
         <div class="qa-section-header">
-          <span class="card-label">Actions <span class="label-badge">end of meeting</span></span>
+          <span class="card-label"><span data-i18n="qa.actions">Actions</span> <span class="label-badge" data-i18n="badge.endofmeeting">end of meeting</span></span>
         </div>
         <div class="list-box" id="actions-list"></div>
       </div>
@@ -203,33 +207,33 @@
 
   </aside>
 
-  <!-- ── Library panel (inline right, slides in) ──────────────────────────── -->
+  <!-- ── Library panel ────────────────────────────────────────────────────── -->
   <aside id="library-panel">
     <div class="lib-panel-header">
-      <span class="lib-panel-title">Library</span>
+      <span class="lib-panel-title" data-i18n="lib.heading">Library</span>
       <button id="btn-close-library" class="btn-icon-sm" title="Close">&#10005;</button>
     </div>
     <div class="lib-panel-body">
 
       <div id="lib-companies-col">
         <div class="lib-col-header">
-          <span>Companies</span>
+          <span data-i18n="lib.companies_col">Companies</span>
           <button id="btn-new-company" class="btn-icon">+</button>
         </div>
         <div id="lib-companies-list"></div>
       </div>
 
       <div id="lib-content-col">
-        <div id="lib-meetings-pane" class="hidden">
+        <div id="lib-timeline-pane" class="hidden">
           <div class="lib-col-header">
             <span id="lib-company-name-title"></span>
             <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
           </div>
-          <div id="lib-meetings-list"></div>
+          <div id="lib-timeline-list"></div>
         </div>
         <div id="lib-meeting-detail" class="hidden"></div>
         <div id="lib-empty-hint">
-          <p>Select a company to view its meetings.</p>
+          <p data-i18n="lib.empty_hint">Select a company to view its meetings.</p>
         </div>
       </div>
 
@@ -242,30 +246,34 @@
 <div id="meeting-setup-modal" class="hidden">
   <div class="modal-backdrop"></div>
   <div class="modal-card">
-    <h2>New meeting</h2>
+    <h2 data-i18n="modal.heading">New meeting</h2>
     <div class="modal-field">
-      <label>Company</label>
+      <label data-i18n="modal.company_label">Company</label>
       <div class="modal-row">
         <select id="modal-company-select"></select>
-        <button id="modal-btn-new-company" class="btn-sm">+ New</button>
+        <button id="modal-btn-new-company" class="btn-sm" data-i18n="modal.btn_new_company">+ New</button>
       </div>
     </div>
     <div id="modal-new-company-form" class="hidden">
       <div class="modal-field">
-        <label>Company name</label>
+        <label data-i18n="modal.company_name">Company name</label>
         <input id="modal-new-company-name" type="text" placeholder="e.g. ACME Corp" />
       </div>
     </div>
     <div class="modal-field">
-      <label>Meeting title</label>
+      <label data-i18n="modal.title_label">Meeting title</label>
       <input id="modal-title" type="text" placeholder="e.g. Q2 kick-off meeting" />
     </div>
     <div class="modal-field">
-      <label>Description <span class="muted-label">(optional)</span></label>
+      <label><span data-i18n="modal.service_label">Service / Team</span> <span class="muted-label" data-i18n="modal.service_optional">(optional)</span></label>
+      <input id="modal-service" type="text" placeholder="e.g. Product, Design, HR…" />
+    </div>
+    <div class="modal-field">
+      <label><span data-i18n="modal.desc_label">Description</span> <span class="muted-label" data-i18n="modal.desc_optional">(optional)</span></label>
       <textarea id="modal-desc" placeholder="Context, agenda…" rows="3"></textarea>
     </div>
     <div class="modal-field">
-      <label>Number of speakers</label>
+      <label data-i18n="modal.speakers_label">Number of speakers</label>
       <select id="modal-num-speakers">
         <option value="1">1 (solo)</option>
         <option value="2" selected>2</option>
@@ -275,8 +283,8 @@
       </select>
     </div>
     <div class="modal-actions">
-      <button id="modal-btn-cancel">Cancel</button>
-      <button id="modal-btn-confirm" class="btn-primary">&#9654; Start</button>
+      <button id="modal-btn-cancel" data-i18n="modal.btn_cancel">Cancel</button>
+      <button id="modal-btn-confirm" class="btn-primary" data-i18n="modal.btn_confirm">&#9654; Start</button>
     </div>
   </div>
 </div>
@@ -284,28 +292,40 @@
 <!-- ── Settings panel (floating popover) ─────────────────────────────────────── -->
 <div id="settings-panel">
 
+  <!-- Interface language -->
   <div class="settings-section">
-    <div class="settings-section-label">Language</div>
+    <div class="settings-section-label" data-i18n="settings.ui_lang">Interface</div>
     <div class="lang-toggle">
-      <button class="lang-btn active" data-lang="fr">FR</button>
-      <button class="lang-btn"        data-lang="en">EN</button>
+      <button class="ui-lang-btn active" data-ui-lang="en">EN</button>
+      <button class="ui-lang-btn"        data-ui-lang="fr">FR</button>
     </div>
   </div>
 
+  <!-- Analysis / transcription language -->
   <div class="settings-section">
-    <div class="settings-section-label">LMStudio URL</div>
+    <div class="settings-section-label" data-i18n="settings.analysis_lang">Analysis language</div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="en">EN</button>
+      <button class="lang-btn"        data-lang="fr">FR</button>
+    </div>
+  </div>
+
+  <!-- LMStudio URL -->
+  <div class="settings-section">
+    <div class="settings-section-label" data-i18n="settings.lmstudio_url">LMStudio URL</div>
     <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" class="settings-input" placeholder="http://localhost:1234/v1" />
   </div>
 
+  <!-- Theme -->
   <div class="settings-section">
-    <div class="settings-section-label">Thème</div>
+    <div class="settings-section-label" data-i18n="settings.theme">Theme</div>
     <div class="theme-list">
 
       <button class="theme-option" data-theme="dark">
         <span class="theme-swatch" style="background:linear-gradient(135deg,#1e2130 50%,#ff7c00 50%)"></span>
         <div class="theme-option-text">
           <span class="theme-option-name">Dark</span>
-          <span class="theme-option-desc">Fond sombre, accents orange vif</span>
+          <span class="theme-option-desc">Dark background, vivid orange accents</span>
         </div>
       </button>
 
@@ -313,7 +333,7 @@
         <span class="theme-swatch" style="background:linear-gradient(135deg,#F8F9FB 50%,#EA580C 50%)"></span>
         <div class="theme-option-text">
           <span class="theme-option-name">Light</span>
-          <span class="theme-option-desc">Fond clair, accents orange</span>
+          <span class="theme-option-desc">Clean white background, orange accents</span>
         </div>
       </button>
 
@@ -321,7 +341,7 @@
         <span class="theme-swatch" style="background:linear-gradient(135deg,#3b4252 50%,#88c0d0 50%)"></span>
         <div class="theme-option-text">
           <span class="theme-option-name">Nord</span>
-          <span class="theme-option-desc">Bleu glacier nordique, tons froids</span>
+          <span class="theme-option-desc">Northern glacier blue, cool tones</span>
         </div>
       </button>
 
@@ -329,7 +349,7 @@
         <span class="theme-swatch" style="background:linear-gradient(135deg,#fffdf5 50%,#8b5a00 50%)"></span>
         <div class="theme-option-text">
           <span class="theme-option-name">Sépia</span>
-          <span class="theme-option-desc">Tons chauds, brun doux sur ivoire</span>
+          <span class="theme-option-desc">Warm tones, soft brown on ivory</span>
         </div>
       </button>
 
@@ -338,6 +358,7 @@
 
 </div>
 
+<script src="translations.js"></script>
 <script src="app.js"></script>
 <script src="library.js"></script>
 </body>

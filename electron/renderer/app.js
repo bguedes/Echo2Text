@@ -173,7 +173,7 @@ let audioCtx    = null;
 let mediaStream = null;
 let processor   = null;
 let recording   = false;
-let language    = 'fr';  // 'fr' | 'en'
+let language    = localStorage.getItem('parakeet-analysis-lang') || 'en';  // 'fr' | 'en'
 
 let allSentences = [];
 let lastSentIdx  = 0;
@@ -1245,11 +1245,23 @@ btnChangeMeeting.addEventListener('click', () => {
   openMeetingSetup();
 });
 
+// Analysis language toggle (controls which LLM prompts are used)
 document.querySelectorAll('.lang-btn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.lang === language);
   btn.addEventListener('click', () => {
     language = btn.dataset.lang;
+    localStorage.setItem('parakeet-analysis-lang', language);
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
     llmHistoryQ = [{ role: 'system', content: promptQuestions() }]; // reset history
+  });
+});
+
+// UI language toggle (controls interface text via i18n)
+document.querySelectorAll('.ui-lang-btn').forEach(btn => {
+  btn.classList.toggle('active', btn.dataset.uiLang === (localStorage.getItem('parakeet-ui-lang') || 'en'));
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.ui-lang-btn').forEach(b => b.classList.toggle('active', b === btn));
+    if (typeof window.setUiLang === 'function') window.setUiLang(btn.dataset.uiLang);
   });
 });
 
@@ -1497,6 +1509,7 @@ document.querySelectorAll('.theme-option').forEach(btn => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 applyTheme(localStorage.getItem('parakeet-theme') || 'light');
+if (typeof window.applyI18n === 'function') window.applyI18n();
 pollServer();
 checkLmStudio();
 setInterval(checkLmStudio, 10000);
