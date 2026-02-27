@@ -39,6 +39,14 @@
 
     <div class="sidebar-spacer"></div>
 
+    <button class="nav-btn" id="nav-settings" title="Settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+      <span class="nav-label">Settings</span>
+    </button>
+
     <button class="nav-btn" id="btn-sidebar-toggle" title="Expand sidebar">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <polyline points="9 18 15 12 9 6"/>
@@ -55,12 +63,6 @@
     <header>
       <h1>Echo2Text &mdash; Transcription &amp; Real Time Analysis</h1>
       <div class="header-right">
-        <div class="theme-switcher">
-          <button class="theme-btn"        data-theme="dark"  title="Dark"></button>
-          <button class="theme-btn active" data-theme="light" title="Light"></button>
-          <button class="theme-btn"        data-theme="nord"  title="Nord"></button>
-          <button class="theme-btn"        data-theme="sepia" title="Sepia"></button>
-        </div>
         <div class="status-bar">
           <div class="status-item">
             <span class="dot" id="dot-server"></span>
@@ -83,10 +85,6 @@
       <button id="btn-start">&#9654; Start</button>
       <button id="btn-stop"  disabled>&#9632; Stop</button>
       <button id="btn-reset">&#8634; Reset</button>
-      <div class="lang-toggle">
-        <button class="lang-btn active" data-lang="fr">FR</button>
-        <button class="lang-btn"        data-lang="en">EN</button>
-      </div>
       <div class="audio-source-group">
         <label for="audio-source-select">&#127908;</label>
         <select id="audio-source-select"><option value="mic:default">System microphone</option></select>
@@ -98,10 +96,6 @@
         <button id="btn-close-url">&#10005; Close</button>
       </div>
       <input type="file" id="audio-file-input" accept="audio/*,video/mp4,video/webm,video/ogg" style="display:none" />
-      <div class="url-group">
-        <label for="lmstudio-url">LMStudio URL</label>
-        <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" />
-      </div>
     </div>
 
     <!-- ── Meeting context bar ────────────────────────────────────────────── -->
@@ -285,6 +279,63 @@
       <button id="modal-btn-confirm" class="btn-primary">&#9654; Start</button>
     </div>
   </div>
+</div>
+
+<!-- ── Settings panel (floating popover) ─────────────────────────────────────── -->
+<div id="settings-panel">
+
+  <div class="settings-section">
+    <div class="settings-section-label">Language</div>
+    <div class="lang-toggle">
+      <button class="lang-btn active" data-lang="fr">FR</button>
+      <button class="lang-btn"        data-lang="en">EN</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-label">LMStudio URL</div>
+    <input id="lmstudio-url" type="text" value="http://localhost:1234/v1" class="settings-input" placeholder="http://localhost:1234/v1" />
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-label">Thème</div>
+    <div class="theme-list">
+
+      <button class="theme-option" data-theme="dark">
+        <span class="theme-swatch" style="background:linear-gradient(135deg,#1e2130 50%,#ff7c00 50%)"></span>
+        <div class="theme-option-text">
+          <span class="theme-option-name">Dark</span>
+          <span class="theme-option-desc">Fond sombre, accents orange vif</span>
+        </div>
+      </button>
+
+      <button class="theme-option active" data-theme="light">
+        <span class="theme-swatch" style="background:linear-gradient(135deg,#F8F9FB 50%,#EA580C 50%)"></span>
+        <div class="theme-option-text">
+          <span class="theme-option-name">Light</span>
+          <span class="theme-option-desc">Fond clair, accents orange</span>
+        </div>
+      </button>
+
+      <button class="theme-option" data-theme="nord">
+        <span class="theme-swatch" style="background:linear-gradient(135deg,#3b4252 50%,#88c0d0 50%)"></span>
+        <div class="theme-option-text">
+          <span class="theme-option-name">Nord</span>
+          <span class="theme-option-desc">Bleu glacier nordique, tons froids</span>
+        </div>
+      </button>
+
+      <button class="theme-option" data-theme="sepia">
+        <span class="theme-swatch" style="background:linear-gradient(135deg,#fffdf5 50%,#8b5a00 50%)"></span>
+        <div class="theme-option-text">
+          <span class="theme-option-name">Sépia</span>
+          <span class="theme-option-desc">Tons chauds, brun doux sur ivoire</span>
+        </div>
+      </button>
+
+    </div>
+  </div>
+
 </div>
 
 <script src="app.js"></script>

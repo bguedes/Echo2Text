@@ -1467,13 +1467,33 @@ document.getElementById('btn-toggle-segments').addEventListener('click', functio
 function applyTheme(theme) {
   document.body.dataset.theme = theme;
   localStorage.setItem('parakeet-theme', theme);
-  document.querySelectorAll('.theme-btn').forEach(b =>
+  document.querySelectorAll('.theme-option').forEach(b =>
     b.classList.toggle('active', b.dataset.theme === theme));
 }
 
-document.querySelectorAll('.theme-btn').forEach(btn => {
+document.querySelectorAll('.theme-option').forEach(btn => {
   btn.addEventListener('click', () => applyTheme(btn.dataset.theme));
 });
+
+// ─── Settings panel ───────────────────────────────────────────────────────────
+(function () {
+  const panel  = document.getElementById('settings-panel');
+  const navBtn = document.getElementById('nav-settings');
+
+  navBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = panel.classList.toggle('open');
+    navBtn.classList.toggle('active', isOpen);
+  });
+
+  // Close when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!panel.contains(e.target) && e.target !== navBtn) {
+      panel.classList.remove('open');
+      navBtn.classList.remove('active');
+    }
+  });
+})();
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 applyTheme(localStorage.getItem('parakeet-theme') || 'light');
