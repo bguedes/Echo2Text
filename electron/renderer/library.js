@@ -224,7 +224,7 @@ function renderMeetingDetail(m) {
     ? `<div class="detail-summary-text">${escHtml(m.summary.summary_text)}</div>
        ${m.summary.next_steps
          ? `<div class="detail-nextsteps-label">${_t('detail.next_steps')}</div>
-            <div class="detail-summary-text detail-summary-muted">${escHtml(m.summary.next_steps)}</div>`
+            <div class="detail-summary-text detail-summary-muted">${escHtml(Array.isArray(m.summary.next_steps) ? m.summary.next_steps.map(i => (typeof i === 'string' ? i : (i.text || i.action || i.description || i.step || JSON.stringify(i)))).join('\n') : String(m.summary.next_steps))}</div>`
          : ''}`
     : `<div class="lib-empty">${_t('detail.no_summary')}</div>`;
 

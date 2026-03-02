@@ -44,13 +44,15 @@ Desktop application (Windows / macOS) for live meeting transcription with automa
 | Component | Windows | macOS (M3) |
 |-----------|---------|------------|
 | OS | Windows 10/11 64-bit | macOS 14 Sonoma or later |
-| GPU (optional) | NVIDIA CUDA 11.8+ | — (CPU only) |
+| GPU (optional) | NVIDIA CUDA 11.8+ | Metal via MLX (automatic) |
 | RAM | 8 GB minimum, 16 GB recommended | 8 GB minimum, 16 GB recommended |
 | Disk space | ~5 GB base + ~3 GB with diarization | ~5 GB base + ~3 GB with diarization |
 | Python | 3.10 – 3.12 | 3.10 – 3.12 |
 | Node.js | 18 LTS or 20 LTS | 18 LTS or 20 LTS |
 
-> **NVIDIA GPU**: if you have an NVIDIA card, `onnx-asr` will automatically use CUDA to accelerate transcription. Without a GPU, transcription runs on CPU (slower but fully functional).
+> **NVIDIA GPU (Windows/Linux)**: if you have an NVIDIA card, `onnx-asr` will automatically use CUDA to accelerate transcription. Without a GPU, transcription runs on CPU (slower but fully functional).
+
+> **Apple Silicon (macOS)**: Echo2Text automatically uses **parakeet-mlx** which runs on the Metal GPU via MLX — no CUDA or ONNX Runtime required.
 
 > **Diarization**: the speaker detection feature requires an additional ~2 GB for PyTorch and the pyannote models. It is fully optional — the app works normally without it.
 
@@ -132,9 +134,12 @@ pip install -r requirements.txt
 > **With NVIDIA GPU**: `onnx-asr[gpu,hub]` automatically installs `onnxruntime-gpu`. Make sure CUDA 11.8+ is installed.
 > **Without GPU**: replace `onnx-asr[gpu,hub]` with `onnx-asr[hub]` in `requirements.txt` before installing.
 
-### macOS (M3)
+### macOS (Apple Silicon M1/M2/M3/M4)
 ```bash
 cd Echo2Text
+
+# FFmpeg is required by parakeet-mlx for audio decoding
+brew install ffmpeg
 
 # Create the virtual environment
 python3 -m venv venv
@@ -142,13 +147,15 @@ python3 -m venv venv
 # Activate the environment
 source venv/bin/activate
 
-# Install dependencies (CPU only on M3)
-pip install "onnx-asr[hub]>=0.6.1" "fastapi>=0.115.0" "uvicorn[standard]>=0.30.0" "python-dotenv>=1.0.0"
+# Install dependencies (MLX backend — Metal GPU acceleration)
+pip install -r requirements-mac.txt
 ```
 
-> On Apple Silicon, `onnxruntime` runs in CPU mode. The `[gpu]` extra is not needed.
+> On Apple Silicon, Echo2Text uses **parakeet-mlx** which leverages the Metal GPU via MLX. `onnxruntime` is not installed or used on macOS.
 
-The first launch will automatically download the **nemo-parakeet-tdt-0.6b-v3** model (~600 MB) from HuggingFace Hub.
+The first launch will automatically download the Parakeet TDT v3 model from HuggingFace Hub:
+- **macOS (MLX)**: `mlx-community/parakeet-tdt-0.6b-v3` (~350 MB)
+- **Windows/Linux (ONNX)**: `nemo-parakeet-tdt-0.6b-v3` (~600 MB)
 
 ---
 
@@ -256,10 +263,12 @@ HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx
 venv\Scripts\activate        # Windows
 source venv/bin/activate     # macOS
 
+# Windows / Linux only — already included in requirements-mac.txt for macOS
 pip install pyannote.audio python-dotenv
 ```
 
-> This installs **PyTorch** (~2 GB) as a transitive dependency. On macOS M3, native ARM64 builds are used automatically.
+> This installs **PyTorch** (~2 GB) as a transitive dependency. On macOS Apple Silicon, native ARM64 builds are used automatically.
+> **macOS users**: if you installed via `pip install -r requirements-mac.txt`, `pyannote.audio` is already included — no extra step needed.
 
 ### 8.4 How it works
 
@@ -277,7 +286,11 @@ Speaker identities are **stable across audio chunks** — if the same person spe
 On launch, the server loads the pyannote pipeline in a background thread (~30–60 seconds). You will see in the logs:
 
 ```
-[diarization] Pipeline ready (cpu)      # or (cuda) with an NVIDIA GPU
+[backend] MLX (Apple Silicon)           # macOS
+[backend] ONNX Runtime                  # Windows / Linux
+[diarization] Pipeline ready (mps)      # macOS — Metal GPU
+[diarization] Pipeline ready (cuda)     # Windows with NVIDIA GPU
+[diarization] Pipeline ready (cpu)      # Windows / Linux without GPU
 ```
 
 If the token is missing or invalid:
@@ -335,10 +348,11 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 - Launches the Electron app via `npm start` in the `electron/` folder
 
 **Differences from Windows:**
-- On M3, transcription runs on **CPU** (ONNX Runtime ARM64) — slightly slower than an NVIDIA GPU, but perfectly usable
-- No CUDA installation required
-- The Parakeet TDT v3 model runs natively on Apple Silicon
-- PyTorch (for diarization) uses native ARM64 builds automatically
+- On Apple Silicon, transcription uses **MLX** with Metal GPU acceleration — fast and efficient
+- The backend is detected automatically at startup: `[backend] MLX (Apple Silicon)`
+- No CUDA or ONNX Runtime installation required
+- The model is downloaded from `mlx-community/parakeet-tdt-0.6b-v3` (~350 MB, once)
+- PyTorch (for diarization) uses native ARM64 builds and runs on Metal (MPS) automatically
 
 ---
 
@@ -368,7 +382,14 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 
 ### Error installing `onnx-asr[gpu,hub]`
 - Make sure CUDA 11.8+ is installed (Windows with NVIDIA GPU)
-- On macOS M3 or a PC without a GPU, use `onnx-asr[hub]` (CPU only)
+- On a PC without a GPU, use `onnx-asr[hub]` in `requirements.txt` (CPU only)
+- **On macOS**: `onnx-asr` is not used — use `pip install -r requirements-mac.txt` instead
+
+### `parakeet-mlx` fails to install or import (macOS)
+- Make sure your virtual environment is activated: `source venv/bin/activate`
+- Make sure FFmpeg is installed: `brew install ffmpeg`
+- Check your Python version: `python3 --version` must be 3.10–3.12
+- Try upgrading pip first: `pip install --upgrade pip`
 
 ### The "LMStudio" dot stays red
 - Make sure LMStudio is open and the local server is started (tab `<->`)
@@ -388,7 +409,7 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 ### Transcription is slow
 - On CPU (no GPU), expect ~2–5s latency per 5s audio chunk
 - With an NVIDIA GPU, latency drops to <1s
-- On M3, speed is comparable to a recent Intel Core i7 (sufficient for meeting use)
+- On Apple Silicon with MLX, latency is comparable to an NVIDIA GPU — well under 1s per chunk
 
 ### Speaker badges do not appear
 - Check that `HF_TOKEN` is set in your `.env` file

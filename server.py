@@ -2,11 +2,14 @@ import asyncio
 import json
 import numpy as np
 import os
+import platform as _sys_platform
 import queue
 import struct
+import sys
 import threading
 import time
 import warnings
+import wave
 
 # Suppress harmless torchcodec/FFmpeg warning (pyannote falls back to tensor I/O)
 warnings.filterwarnings('ignore', message='torchcodec is not installed')
@@ -14,17 +17,32 @@ warnings.filterwarnings('ignore', message='torchcodec is not installed')
 from dotenv import load_dotenv
 load_dotenv()
 
-import onnxruntime as _ort
-import onnx_asr
+# ─── Platform detection ───────────────────────────────────────────────────────
+def _detect_backend():
+    """MLX on Apple Silicon, ONNX everywhere else."""
+    if sys.platform == 'darwin' and _sys_platform.machine() == 'arm64':
+        try:
+            import mlx.core  # noqa — check MLX is installed
+            return 'mlx'
+        except ImportError:
+            pass
+    return 'onnx'
+
+BACKEND = _detect_backend()
+print(f"[backend] {'MLX (Apple Silicon)' if BACKEND == 'mlx' else 'ONNX Runtime'}")
+
+if BACKEND == 'onnx':
+    import onnxruntime as _ort
+    import onnx_asr
+    _available = _ort.get_available_providers()
+    providers = [p for p in ['CUDAExecutionProvider', 'CPUExecutionProvider'] if p in _available]
+    if not providers:
+        providers = ['CPUExecutionProvider']
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-# Only include CUDA if actually available — avoids DLL-not-found spam at startup
-_available = _ort.get_available_providers()
-providers = [p for p in ['CUDAExecutionProvider', 'CPUExecutionProvider'] if p in _available]
-if not providers:
-    providers = ['CPUExecutionProvider']
 SAMPLE_RATE   = 16000
 CHUNK_SECONDS = 5   # more context per inference → better accuracy
 
@@ -37,11 +55,16 @@ def get_model():
     global _asr_model, _model_ready
     with _asr_model_lock:
         if _asr_model is None:
-            print("Loading Parakeet model…")
-            _asr_model = (
-                onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", providers=providers)
-                .with_timestamps()
-            )
+            if BACKEND == 'mlx':
+                print("Loading Parakeet MLX model…")
+                from parakeet_mlx import from_pretrained
+                _asr_model = from_pretrained("mlx-community/parakeet-tdt-0.6b-v3")
+            else:
+                print("Loading Parakeet ONNX model…")
+                _asr_model = (
+                    onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", providers=providers)
+                    .with_timestamps()
+                )
             _model_ready = True
             print("ASR model ready.")
     return _asr_model
@@ -73,7 +96,12 @@ def load_diarization():
         )
         emb_model = Model.from_pretrained("pyannote/embedding", token=hf_token)
         emb = Inference(emb_model, window="whole")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+            device = torch.device('mps')
+        else:
+            device = torch.device('cpu')
         pipe.to(device)
         with _diar_lock:
             _diar_pipeline   = pipe
@@ -228,6 +256,11 @@ def convert_to_sentence_timestamps(timestamps, tokens):
     return sentences
 
 def _transcribe(audio_float32, time_offset):
+    return _transcribe_mlx(audio_float32, time_offset) if BACKEND == 'mlx' \
+           else _transcribe_onnx(audio_float32, time_offset)
+
+# ── Backend ONNX ──────────────────────────────────────────────────────────────
+def _transcribe_onnx(audio_float32, time_offset):
     model = get_model()
     out   = model.recognize(float_to_int16(audio_float32))
     if not out.tokens:
@@ -243,6 +276,40 @@ def _transcribe(audio_float32, time_offset):
         for s in raw_sents
     ]
     return sentences, ''.join(out.tokens), last_end
+
+# ── Backend MLX (Apple Silicon) ───────────────────────────────────────────────
+def _transcribe_mlx(audio_float32, time_offset):
+    """
+    parakeet-mlx expects an audio file path. Write a temporary WAV using
+    stdlib `wave` (no extra dependency) then call model.transcribe(path).
+    result.sentences is a list of AlignedSentence with .text, .start, .end
+    """
+    import tempfile
+    model   = get_model()
+    fd, tmp = tempfile.mkstemp(suffix='.wav')
+    os.close(fd)
+    try:
+        pcm = (audio_float32 * 32767).clip(-32768, 32767).astype(np.int16)
+        with wave.open(tmp, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(pcm.tobytes())
+        result = model.transcribe(tmp)
+    finally:
+        os.unlink(tmp)
+
+    if not result.sentences:
+        return [], result.text or '', 0.0
+    sentences = [
+        {
+            'start':   f"{s.start + time_offset:.2f}",
+            'end':     f"{s.end   + time_offset:.2f}",
+            'segment': s.text,
+        }
+        for s in result.sentences
+    ]
+    return sentences, result.text, result.sentences[-1].end
 
 # ─── Background ASR thread ────────────────────────────────────────────────────
 

@@ -10,9 +10,12 @@ let pythonProc  = null;
 
 // ─── Python detection ─────────────────────────────────────────────────────────
 function getPythonExe() {
-  const venvPath = path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe');
-  if (fs.existsSync(venvPath)) return venvPath;
-  return 'python';
+  const isWin  = process.platform === 'win32';
+  const venvPy = isWin
+    ? path.join(__dirname, '..', 'venv', 'Scripts', 'python.exe')
+    : path.join(__dirname, '..', 'venv', 'bin', 'python');
+  if (fs.existsSync(venvPy)) return venvPy;
+  return isWin ? 'python' : 'python3';
 }
 
 // ─── Check if ASR server is already running ───────────────────────────────────

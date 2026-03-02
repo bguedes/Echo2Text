@@ -218,6 +218,19 @@ let savedAudioPath      = '';
 let summaryText         = '';
 let nextStepsText       = '';
 
+// Normalize next_steps: LLM may return a string or an array of objects/strings
+function normalizeNextSteps(val) {
+  if (!val) return '';
+  if (typeof val === 'string') return val;
+  if (Array.isArray(val)) {
+    return val.map(item => {
+      if (typeof item === 'string') return item;
+      return item.text || item.action || item.description || item.step || JSON.stringify(item);
+    }).join('\n');
+  }
+  return String(val);
+}
+
 // ─── DOM elements ─────────────────────────────────────────────────────────────
 const dotServer     = document.getElementById('dot-server');
 const dotLm         = document.getElementById('dot-lmstudio');
@@ -725,7 +738,7 @@ async function generateSummary(fullText) {
     if (match) {
       const parsed  = JSON.parse(match[0]);
       summaryText   = parsed.summary   || '';
-      nextStepsText = parsed.next_steps || '';
+      nextStepsText = normalizeNextSteps(parsed.next_steps);
     }
   } catch (e) {
     console.error('[llm-summary]', e);
