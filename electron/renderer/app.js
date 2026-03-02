@@ -329,17 +329,28 @@ function handleTranscript(msg) {
   maybeTriggerQuestions();
 
   if (msg.final) {
-    maybeTriggerKeyPoints(true);   // flush buffer restant
-    maybeTriggerQuestions(true);   // flush buffer restant
     setDot(dotMic, 'red');
     btnCsv.disabled = allSentences.length === 0;
     btnSrt.disabled = allSentences.length === 0;
     const speakerText = buildSpeakerText(allSentences) || msg.fullText || '';
-    detectActions(speakerText).then(() => {
+
+    (async () => {
+      // Vider les queues temps-réel : l'analyse finale prend le pas sur tout
+      llmQueueK   = [];
+      llmQueueQ   = [];
+      llmQueueAns = [];
+      // Attendre la fin des appels LLM déjà en cours (le courant, pas les queued)
+      await waitForQueues();
+
+      // Analyse complète de la transcription — résultats définitifs
+      await finalAnalysis(speakerText);
+
       if (currentMeetingId !== null) {
-        generateSummary(speakerText).then(() => autoSave());
+        try { await generateSummary(speakerText); }
+        catch (e) { console.error('[final] generateSummary:', e); }
+        await autoSave();
       }
-    });
+    })();
   }
 }
 
@@ -651,19 +662,141 @@ async function processAnswerQueue() {
   if (llmQueueAns.length > 0) processAnswerQueue();
 }
 
+// ─── Wait for all real-time LLM queues to be idle ────────────────────────────
+// Résout quand les 3 queues (key-points, questions, réponses) sont vides et inactives.
+// Timeout de sécurité : 120 s (au-delà, on sauvegarde ce qu'on a).
+function waitForQueues(timeoutMs = 120000) {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    (function check() {
+      const idle = !llmBusyK   && llmQueueK.length   === 0
+                && !llmBusyQ   && llmQueueQ.length   === 0
+                && !llmBusyAns && llmQueueAns.length === 0;
+      if (idle) {
+        resolve();
+      } else if (Date.now() >= deadline) {
+        console.warn('[waitForQueues] timeout — sauvegarde avec données partielles');
+        resolve();
+      } else {
+        setTimeout(check, 300);
+      }
+    })();
+  });
+}
+
+// ─── Analyse finale — transcription complète (écrase les résultats temps-réel) ─
+
+async function finalExtractKeyPoints(fullText) {
+  // Réinitialiser avant de remplir avec les résultats définitifs
+  keyPoints = [];
+  renderKeyPoints();
+  try {
+    const url      = urlInput.value.trim();
+    const messages = [
+      { role: 'system', content: promptKeyPoints() },
+      { role: 'user',   content: fullText },
+    ];
+    const resp = await fetch(url + '/chat/completions', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, max_tokens: 600, stream: true }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    await streamSSE(resp, (line) => {
+      if (line.toUpperCase().startsWith('POINT:')) {
+        const text = line.slice(6).trim();
+        if (text && !keyPoints.includes(text)) { keyPoints.push(text); renderKeyPoints(); }
+      }
+    });
+  } catch (e) {
+    console.error('[final-kp]', e);
+  }
+}
+
+async function finalExtractQuestions(fullText) {
+  // Réinitialiser avant de remplir avec les résultats définitifs
+  questions   = [];
+  llmQueueAns = [];
+  renderQuestions();
+  try {
+    const url      = urlInput.value.trim();
+    const messages = [
+      { role: 'system', content: promptQuestions() },
+      { role: 'user',   content: fullText },
+    ];
+    const resp = await fetch(url + '/chat/completions', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, max_tokens: 400, stream: true }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    await streamSSE(resp, (line) => {
+      if (line.toUpperCase().startsWith('QUESTION:')) {
+        const text = line.slice(9).trim();
+        if (text && !questions.find(q => q.text === text)) {
+          questions.push({ text, answer: null, answering: false });
+          renderQuestions();
+        }
+      }
+    });
+  } catch (e) {
+    console.error('[final-q]', e);
+  }
+}
+
+// Orchestrateur : KP + questions + réponses + actions sur transcription complète
+async function finalAnalysis(fullText) {
+  if (!fullText.trim()) return;
+
+  // Vérifier LMStudio — un retry après 4 s si indisponible
+  await checkLmStudio();
+  if (!llmConnected) {
+    await new Promise(r => setTimeout(r, 4000));
+    await checkLmStudio();
+  }
+  if (!llmConnected) {
+    console.warn('[finalAnalysis] LMStudio indisponible — analyse finale ignorée');
+    return;
+  }
+
+  // 1. Points clés — transcription complète (one-shot)
+  await finalExtractKeyPoints(fullText);
+
+  // 2. Questions — transcription complète (one-shot)
+  await finalExtractQuestions(fullText);
+
+  // 3. Générer les réponses pour toutes les questions détectées
+  questions.forEach(q => { q.answering = true; llmQueueAns.push(q); });
+  if (llmQueueAns.length > 0) processAnswerQueue();
+
+  // 4. Actions — réinitialiser + transcription complète
+  actions = [];
+  renderActions();
+  try { await detectActions(fullText); }
+  catch (e) { console.error('[final] detectActions:', e); }
+
+  // 5. Attendre que toutes les réponses aux questions soient terminées
+  await waitForQueues();
+}
+
 // ─── LLM — Action detection (end of meeting) ──────────────────────────────────
 async function detectActions(fullText) {
   if (!fullText.trim()) return;
 
   actionsList.innerHTML = '<div class="detecting">Analyzing actions…</div>';
 
-  try {
+  // Vérifier la disponibilité de LMStudio — un retry après 4 s si indisponible
+  await checkLmStudio();
+  if (!llmConnected) {
+    await new Promise(r => setTimeout(r, 4000));
     await checkLmStudio();
-    if (!llmConnected) {
-      actionsList.innerHTML = '<div class="detecting muted">LMStudio unavailable</div>';
-      return;
-    }
+  }
+  if (!llmConnected) {
+    actionsList.innerHTML = '<div class="detecting muted">LMStudio unavailable</div>';
+    return;
+  }
 
+  try {
     const url      = urlInput.value.trim();
     const messages = [
       { role: 'system', content: promptActions() },
@@ -719,7 +852,9 @@ function renderSummary() {
 
 // ─── LLM — Summary generation (end of meeting, one-shot) ─────────────────────
 async function generateSummary(fullText) {
-  if (!fullText.trim() || !llmConnected) return;
+  if (!fullText.trim()) return;
+  await checkLmStudio();
+  if (!llmConnected) return;
 
   // Show generating state immediately
   const card    = document.getElementById('summary-card');
@@ -792,6 +927,7 @@ async function autoSave() {
     showNotification('Meeting saved ✓');
   } catch (e) {
     console.error('[autoSave]', e);
+    showNotification('⚠ Save failed — check the console');
   }
 }
 
