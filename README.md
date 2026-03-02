@@ -265,11 +265,12 @@ venv\Scripts\activate        # Windows
 source venv/bin/activate     # macOS
 
 # Windows / Linux only — already included in requirements-mac.txt for macOS
-pip install pyannote.audio python-dotenv
+pip install pyannote.audio omegaconf python-dotenv
 ```
 
 > This installs **PyTorch** (~2 GB) as a transitive dependency. On macOS Apple Silicon, native ARM64 builds are used automatically.
-> **macOS users**: if you installed via `pip install -r requirements-mac.txt`, `pyannote.audio` is already included — no extra step needed.
+> `omegaconf` is a required dependency of `pyannote.audio` that is not always pulled automatically — installing it explicitly avoids a startup error.
+> **macOS users**: if you installed via `pip install -r requirements-mac.txt`, `pyannote.audio` and `omegaconf` are already included — no extra step needed.
 
 ### 8.4 How it works
 

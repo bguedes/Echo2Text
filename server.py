@@ -11,8 +11,9 @@ import time
 import warnings
 import wave
 
-# Suppress harmless torchcodec/FFmpeg warning (pyannote falls back to tensor I/O)
-warnings.filterwarnings('ignore', message='torchcodec is not installed')
+# Suppress harmless torchcodec/FFmpeg warning (pyannote falls back to tensor I/O).
+# The message starts with '\n' so we filter by module instead of message text.
+warnings.filterwarnings('ignore', category=UserWarning, module=r'pyannote\.audio\.core\.io')
 
 from dotenv import load_dotenv
 load_dotenv()
