@@ -36,6 +36,7 @@ Desktop application (Windows / macOS) for live meeting transcription with automa
 10. [macOS Launch (Apple M3)](#10-macos-launch-apple-m3)
 11. [Supported Audio Sources](#11-supported-audio-sources)
 12. [FAQ / Troubleshooting](#12-faq--troubleshooting)
+13. [LLM Word Buffer — Questions & Key Points](#13-llm-word-buffer--questions--key-points)
 
 ---
 
@@ -426,3 +427,45 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 - Make sure your virtual environment is activated
 - Try updating pip first: `pip install --upgrade pip`
 - On Windows, Visual C++ Build Tools may be required for some sub-dependencies
+
+---
+
+## 13. LLM Word Buffer — Questions & Key Points
+
+### How it works
+
+Echo2Text does not call the LLM after every sentence. Instead, it accumulates transcribed words in a buffer and only triggers the LLM analysis once a configurable word-count threshold is reached. This avoids hammering the LLM with tiny fragments and improves the quality of extracted questions and key points.
+
+- **Questions** default threshold: **200 words** (~1.5 minutes of speech at average pace)
+- **Key points** default threshold: **400 words** (~3 minutes of speech)
+
+When the recording is stopped (■ Stop), any words remaining in the buffer — regardless of size — are flushed immediately so that the last part of the conversation is always analyzed.
+
+### Configuring the thresholds
+
+Open the **Settings** panel (gear icon) and scroll to the bottom. Two drop-down selectors are available:
+
+| Setting | Default | Options |
+|---|---|---|
+| **Questions — word buffer** | 200 words | 100 / 150 / 200 / 300 / 400 / 600 / 900 |
+| **Key points — word buffer** | 400 words | 100 / 150 / 200 / 300 / 400 / 600 / 900 |
+
+Approximate speaking-time equivalents at ~135 words per minute:
+
+| Words | Speaking time |
+|---|---|
+| 100 | ~45 seconds |
+| 150 | ~1 minute |
+| 200 | ~1.5 minutes |
+| 300 | ~2.5 minutes |
+| 400 | ~3 minutes |
+| 600 | ~4.5 minutes |
+| 900 | ~7 minutes |
+
+### Tuning recommendations
+
+- **Short meetings or rapid exchanges** (stand-ups, interviews): lower the threshold (100–150 words) so that questions and key points are surfaced quickly.
+- **Long meetings or presentations**: higher thresholds (400–900 words) give the LLM a richer context, improving the relevance of extracted items and reducing the total number of LLM calls.
+- **Slow LLM / limited RAM**: increase both thresholds to reduce concurrent LLM activity.
+
+Chosen values are persisted in `localStorage` and restored automatically on the next launch.

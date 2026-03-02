@@ -1392,6 +1392,21 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 .settings-input:focus { border-color: var(--accent); }
 
+.settings-select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: var(--font);
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.settings-select:focus { border-color: var(--accent); }
+
 /* Theme list */
 .theme-list {
   display: flex;

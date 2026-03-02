@@ -183,6 +183,16 @@ let speakerNames = {};  // { "SPEAKER_0": "Alice", "SPEAKER_1": "Bob" }
 let keyPoints = [];
 let lastKIdx  = 0;
 
+// ─── Word-buffer settings ─────────────────────────────────────────────────────
+let bufSizeQ        = parseInt(localStorage.getItem('parakeet-buf-q') || '200', 10);
+let bufSizeK        = parseInt(localStorage.getItem('parakeet-buf-k') || '400', 10);
+// scan pointers : avancent à chaque appel pour éviter le double-comptage des mots
+let lastSentScanIdx = 0;
+let lastKScanIdx    = 0;
+// compteurs de mots accumulés depuis le dernier déclenchement LLM
+let wordBufQ        = 0;
+let wordBufK        = 0;
+
 // Questions: [{ text, answer, answering }]
 let questions = [];
 // Actions: [string] — detected at the end of a meeting
@@ -319,6 +329,8 @@ function handleTranscript(msg) {
   maybeTriggerQuestions();
 
   if (msg.final) {
+    maybeTriggerKeyPoints(true);   // flush buffer restant
+    maybeTriggerQuestions(true);   // flush buffer restant
     setDot(dotMic, 'red');
     btnCsv.disabled = allSentences.length === 0;
     btnSrt.disabled = allSentences.length === 0;
@@ -433,13 +445,22 @@ function renderTimestamps() {
 }
 
 // ─── LLM — Real-time key-point extraction ────────────────────────────────────
-function maybeTriggerKeyPoints() {
-  const newSents = allSentences.slice(lastKIdx);
-  if (!newSents.length) return;
-  const fragment = buildSpeakerText(newSents) || newSents.map(s => s.segment).join(' ');
-  lastKIdx = allSentences.length;
-  llmQueueK.push(fragment);
-  processKeyPointsQueue();
+function countWords(text) {
+  return text ? text.trim().split(/\s+/).filter(Boolean).length : 0;
+}
+
+function maybeTriggerKeyPoints(flush = false) {
+  const unscanned = allSentences.slice(lastKScanIdx);
+  wordBufK       += unscanned.reduce((n, s) => n + countWords(s.segment), 0);
+  lastKScanIdx    = allSentences.length;          // scan pointer — avance toujours
+
+  if (wordBufK >= bufSizeK || (flush && wordBufK > 0)) {
+    const fragment = buildSpeakerText(allSentences.slice(lastKIdx))
+                     || allSentences.slice(lastKIdx).map(s => s.segment).join(' ');
+    lastKIdx = allSentences.length;               // trigger pointer — avance au déclenchement
+    wordBufK = 0;
+    if (fragment.trim()) { llmQueueK.push(fragment); processKeyPointsQueue(); }
+  }
 }
 
 async function processKeyPointsQueue() {
@@ -504,13 +525,18 @@ function renderKeyPoints() {
 }
 
 // ─── LLM — Real-time question detection ──────────────────────────────────────
-function maybeTriggerQuestions() {
-  const newSents = allSentences.slice(lastSentIdx);
-  if (!newSents.length) return;
-  const fragment = buildSpeakerText(newSents) || newSents.map(s => s.segment).join(' ');
-  lastSentIdx = allSentences.length;
-  llmQueueQ.push(fragment);
-  processQuestionQueue();
+function maybeTriggerQuestions(flush = false) {
+  const unscanned  = allSentences.slice(lastSentScanIdx);
+  wordBufQ        += unscanned.reduce((n, s) => n + countWords(s.segment), 0);
+  lastSentScanIdx  = allSentences.length;         // scan pointer — avance toujours
+
+  if (wordBufQ >= bufSizeQ || (flush && wordBufQ > 0)) {
+    const fragment = buildSpeakerText(allSentences.slice(lastSentIdx))
+                     || allSentences.slice(lastSentIdx).map(s => s.segment).join(' ');
+    lastSentIdx = allSentences.length;            // trigger pointer — avance au déclenchement
+    wordBufQ    = 0;
+    if (fragment.trim()) { llmQueueQ.push(fragment); processQuestionQueue(); }
+  }
 }
 
 async function processQuestionQueue() {
@@ -1132,9 +1158,13 @@ function resetAll() {
   recordingStartTime  = null;
   meetingCtxBar.classList.add('hidden');
 
-  allSentences = [];
-  lastSentIdx  = 0;
-  lastKIdx     = 0;
+  allSentences    = [];
+  lastSentIdx     = 0;
+  lastKIdx        = 0;
+  lastSentScanIdx = 0;
+  lastKScanIdx    = 0;
+  wordBufQ        = 0;
+  wordBufK        = 0;
   speakerNames = {};
   keyPoints    = [];
   questions    = [];
@@ -1277,6 +1307,24 @@ document.querySelectorAll('.ui-lang-btn').forEach(btn => {
     if (typeof window.setUiLang === 'function') window.setUiLang(btn.dataset.uiLang);
   });
 });
+
+// Word-buffer size selectors
+const bufQSel = document.getElementById('buf-q-select');
+const bufKSel = document.getElementById('buf-k-select');
+if (bufQSel) {
+  bufQSel.value = String(bufSizeQ);
+  bufQSel.addEventListener('change', () => {
+    bufSizeQ = parseInt(bufQSel.value, 10);
+    localStorage.setItem('parakeet-buf-q', bufQSel.value);
+  });
+}
+if (bufKSel) {
+  bufKSel.value = String(bufSizeK);
+  bufKSel.addEventListener('change', () => {
+    bufSizeK = parseInt(bufKSel.value, 10);
+    localStorage.setItem('parakeet-buf-k', bufKSel.value);
+  });
+}
 
 document.getElementById('btn-refresh-sources').addEventListener('click', loadAudioSources);
 
