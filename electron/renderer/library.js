@@ -302,7 +302,11 @@ function renderMeetingDetail(m) {
         <div class="detail-meta">${date}${dur ? ' · ' + dur : ''}</div>
         ${m.description ? `<div class="detail-desc">${escHtml(m.description)}</div>` : ''}
       </div>
-      <button class="btn-delete-meeting btn-danger" data-id="${m.id}">${_t('detail.delete_btn')}</button>
+      <div class="md-header-actions">
+        <button class="btn-export-pdf" data-id="${m.id}" title="Export as PDF">↓ PDF</button>
+        <button class="btn-export-gdoc" data-id="${m.id}" title="Export document (format configurable in Settings)">↑ Export Doc</button>
+        <button class="btn-delete-meeting btn-danger" data-id="${m.id}">${_t('detail.delete_btn')}</button>
+      </div>
     </div>
 
     <div class="md-audio">${audioHtml}</div>
@@ -348,6 +352,14 @@ function renderMeetingDetail(m) {
       } catch (err) { console.error('[lib] toggleAction', err); }
     });
   });
+
+  // Export PDF
+  const pdfBtn = libMeetingDetail.querySelector('.btn-export-pdf');
+  if (pdfBtn) pdfBtn.addEventListener('click', () => exportMeetingAsPdf(m));
+
+  // Export Document (format from settings)
+  const gdocBtn = libMeetingDetail.querySelector('.btn-export-gdoc');
+  if (gdocBtn) gdocBtn.addEventListener('click', () => exportMeetingAsDocument(m));
 
   // Delete button
   const delBtn = libMeetingDetail.querySelector('.btn-delete-meeting');
@@ -496,6 +508,148 @@ async function createCompanyFromLib() {
   } catch (e) {
     console.error('[lib] createCompany', e);
   }
+}
+
+// ─── Export helpers ───────────────────────────────────────────────────────────
+function buildMeetingHtml(m) {
+  const uiLang = typeof window.getUiLang === 'function' ? window.getUiLang() : 'en';
+  const locale  = uiLang === 'fr' ? 'fr-FR' : 'en-GB';
+  const esc     = str => String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+
+  const company = companies.find(c => c.id === m.company_id);
+  const companyName = company ? company.name : '';
+
+  const date = m.recorded_at
+    ? new Date(m.recorded_at).toLocaleDateString(locale, { weekday:'long', day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit' })
+    : '';
+  const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
+  const speakerNames = m.speaker_names || {};
+
+  // ── Summary ──────────────────────────────────────────────────────────────────
+  let summaryHtml = '';
+  if (m.summary) {
+    summaryHtml = `<div class="section">
+      <h2>Summary</h2>
+      <p class="summary-text">${esc(m.summary.summary_text)}</p>
+      ${m.summary.next_steps ? `<h3>Next steps</h3><ul>${
+        (Array.isArray(m.summary.next_steps) ? m.summary.next_steps : [m.summary.next_steps])
+          .map(i => `<li>${esc(typeof i === 'string' ? i : (i.text || i.action || JSON.stringify(i)))}</li>`).join('')
+      }</ul>` : ''}
+    </div>`;
+  }
+
+  // ── Key points ────────────────────────────────────────────────────────────────
+  let kpHtml = '';
+  if (m.key_points && m.key_points.length) {
+    kpHtml = `<div class="section">
+      <h2>Key Points</h2>
+      <ul>${m.key_points.map(kp => `<li>${esc(kp)}</li>`).join('')}</ul>
+    </div>`;
+  }
+
+  // ── Questions ─────────────────────────────────────────────────────────────────
+  let qHtml = '';
+  if (m.questions && m.questions.length) {
+    qHtml = `<div class="section">
+      <h2>Questions</h2>
+      ${m.questions.map((q, i) => `
+        <div class="q-item">
+          <div class="q-text">Q${i + 1}. ${esc(q.text)}</div>
+          ${q.answer ? `<div class="q-answer">${esc(q.answer)}</div>` : ''}
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────────
+  let actHtml = '';
+  if (m.actions && m.actions.length) {
+    actHtml = `<div class="section">
+      <h2>Actions</h2>
+      ${m.actions.map(a => `
+        <div class="action-item ${a.status === 'done' ? 'action-done' : ''}">
+          <span class="action-check">${a.status === 'done' ? '☑' : '☐'}</span>
+          <span>${esc(a.text)}</span>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // ── Transcript ────────────────────────────────────────────────────────────────
+  let transcriptHtml = '';
+  if (m.sentences && m.sentences.length) {
+    const turns = [];
+    let cur = null;
+    for (const s of m.sentences) {
+      const spk = s.speaker ?? null;
+      if (!cur || cur.speaker !== spk) { cur = { speaker: spk, segs: [] }; turns.push(cur); }
+      cur.segs.push(s.segment);
+    }
+    const COLORS = ['#e05c00','#0070c0','#107c10','#8764b8','#c4314b','#038387'];
+    transcriptHtml = `<div class="section">
+      <h2>Transcript</h2>
+      ${turns.map(turn => {
+        const idx  = typeof turn.speaker === 'number' ? turn.speaker : -1;
+        const name = speakerNames[turn.speaker] || (idx >= 0 ? `Speaker ${idx + 1}` : null);
+        const color = COLORS[idx % COLORS.length] || '#555';
+        return `<div class="speaker-turn">
+          ${name ? `<div class="speaker-name" style="color:${color}">${esc(name)}</div>` : ''}
+          <div class="speaker-text">${esc(turn.segs.join(' '))}</div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  const css = `
+    body { font-family: Arial, Helvetica, sans-serif; color: #222; max-width: 820px; margin: 0 auto; padding: 40px 32px; font-size: 14px; line-height: 1.55; }
+    h1 { font-size: 22px; color: #111; border-bottom: 2px solid #e05c00; padding-bottom: 8px; margin-bottom: 4px; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.6px; color: #555; margin: 24px 0 8px; }
+    h3 { font-size: 13px; color: #444; margin: 12px 0 6px; }
+    .meta { color: #777; font-size: 13px; margin-bottom: 28px; }
+    .section { margin-bottom: 28px; border-top: 1px solid #e8e8e8; padding-top: 16px; }
+    ul { margin: 0; padding-left: 20px; }
+    ul li { padding: 3px 0; }
+    .summary-text { color: #333; }
+    .q-item { padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .q-item:last-child { border-bottom: none; }
+    .q-text { font-weight: 600; }
+    .q-answer { color: #555; margin-top: 4px; margin-left: 16px; }
+    .action-item { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; }
+    .action-check { flex-shrink: 0; font-size: 16px; }
+    .action-done span:last-child { text-decoration: line-through; color: #aaa; }
+    .speaker-turn { margin-bottom: 14px; }
+    .speaker-name { font-size: 12px; font-weight: 700; margin-bottom: 3px; }
+    .speaker-text { color: #333; }
+    @media print { body { padding: 20px; } }
+  `;
+
+  const safeName = esc(m.title || 'meeting');
+
+  return `<!DOCTYPE html>
+<html lang="${uiLang}">
+<head>
+  <meta charset="UTF-8">
+  <title>${safeName}</title>
+  <style>${css}</style>
+</head>
+<body>
+  <h1>${safeName}</h1>
+  <div class="meta">${companyName ? esc(companyName) + ' · ' : ''}${date}${dur ? ' · ' + dur : ''}</div>
+  ${summaryHtml}${kpHtml}${qHtml}${actHtml}${transcriptHtml}
+</body>
+</html>`;
+}
+
+async function exportMeetingAsPdf(m) {
+  const safeName = (m.title || 'meeting').replace(/[<>:"/\\|?*]/g, '-');
+  const html = buildMeetingHtml(m);
+  const result = await window.electronAPI.export.pdf(html, `${safeName}.pdf`);
+  if (result && result.success) console.log('[lib] PDF saved:', result.filePath);
+}
+
+async function exportMeetingAsDocument(m) {
+  const safeName = (m.title || 'meeting').replace(/[<>:"/\\|?*]/g, '-');
+  const format = typeof window.getExportFormat === 'function' ? window.getExportFormat() : 'docx';
+  const result = await window.electronAPI.export.document(format, m, safeName);
+  if (result && result.success) console.log('[lib] Document saved:', result.filePath);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

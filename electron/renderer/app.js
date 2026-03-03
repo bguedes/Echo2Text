@@ -1615,6 +1615,15 @@ if (bufKSel) {
   });
 }
 
+const exportFmtSel = document.getElementById('export-format-select');
+if (exportFmtSel) {
+  exportFmtSel.value = localStorage.getItem('parakeet-export-format') || 'docx';
+  exportFmtSel.addEventListener('change', () => {
+    localStorage.setItem('parakeet-export-format', exportFmtSel.value);
+  });
+}
+window.getExportFormat = () => localStorage.getItem('parakeet-export-format') || 'docx';
+
 document.getElementById('btn-refresh-sources').addEventListener('click', loadAudioSources);
 
 // Show/hide the URL row when the "url" source is selected

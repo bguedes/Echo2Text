@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     toggleAction:    (actionId, status)       => ipcRenderer.invoke('db:toggle-action-status', { actionId, status }),
   },
 
+  export: {
+    pdf:      (html, defaultName)                   => ipcRenderer.invoke('export:pdf',      { html, defaultName }),
+    document: (format, meetingData, defaultName)    => ipcRenderer.invoke('export:document', { format, meetingData, defaultName }),
+  },
+
   audio: {
     save: (meetingId, dataBase64) => ipcRenderer.invoke('audio:save', { meetingId, dataBase64 }),
   },
