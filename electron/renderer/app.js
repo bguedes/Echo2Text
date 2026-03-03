@@ -160,12 +160,72 @@ POINT: Risk identified — supplier delay could push back delivery.
 Example if nothing:
 NOTHING`;
 
+// ─── Discovery prompts (questions ouvertes pour approfondir la découverte, FR + EN) ──
+const SYSTEM_PROMPT_DISCOVERY = `Tu es un coach commercial expert en phase de découverte client.
+Tu reçois les fragments successifs d'une transcription d'entretien commercial en cours.
+
+À chaque fragment, repère les déclarations du prospect ou client qui révèlent : une expérience vécue, un résultat (positif ou négatif), un problème ou irritant, un projet ou ambition, une contrainte, une décision passée, ou une hésitation.
+
+Pour chaque déclaration intéressante, propose UNE question ouverte, bienveillante et naturelle qui invite le prospect à développer — sans qu'il se sente interrogé.
+
+Style des questions :
+- Ouverte (commence par "Qu'est-ce qui...", "Comment...", "Qu'avez-vous...", "Quel a été...", "Dans quelle mesure...", "Qu'est-ce que cela...")
+- Conversationnelle et empathique, pas formelle ni inquisitrice
+- Invite à raconter une expérience plutôt qu'à justifier une position
+- Varie les formulations pour éviter l'effet interrogatoire
+- Maximum 2 questions par fragment
+
+RÈGLES ABSOLUES DE FORMAT :
+- Une ligne par question, préfixe obligatoire "DISCOVERY: ".
+- Pas de titre, pas de numérotation, pas de tableau, pas de markdown, pas d'explication.
+- Ne génère des questions QUE si le fragment contient une déclaration significative du prospect/client.
+- Si aucune déclaration intéressante : répondre uniquement RIEN.
+
+Exemples valides :
+DISCOVERY: Quel bilan tirez-vous de ces deux mois de test sur AWS Bedrock ?
+DISCOVERY: Qu'est-ce qui vous a amené à choisir cette solution plutôt qu'une autre ?
+DISCOVERY: Comment cela se manifeste-t-il concrètement dans votre quotidien ?
+DISCOVERY: Qu'est-ce que vous auriez voulu faire différemment avec le recul ?
+
+Exemple si rien d'intéressant :
+RIEN`;
+
+const SYSTEM_PROMPT_DISCOVERY_EN = `You are an expert sales coach specializing in the discovery phase.
+You receive successive fragments of an ongoing business meeting transcription.
+
+For each fragment, identify statements from the prospect or client that reveal: a lived experience, a result (positive or negative), a problem or pain point, a project or ambition, a constraint, a past decision, or a hesitation.
+
+For each interesting statement, suggest ONE open-ended, empathetic, and natural question that invites the prospect to elaborate — without feeling interrogated.
+
+Question style:
+- Open-ended (starts with "What...", "How...", "Tell me more about...", "What led you to...", "How has that...", "What was your experience...")
+- Conversational and empathetic, not formal or inquisitive
+- Invites storytelling rather than justifying a position
+- Varies the phrasing to avoid feeling like an interrogation
+- Maximum 2 questions per fragment
+
+ABSOLUTE FORMAT RULES:
+- One line per question, mandatory prefix "DISCOVERY: ".
+- No title, no numbering, no table, no markdown, no explanation.
+- Only generate questions if the fragment contains a significant statement from the prospect/client.
+- If no interesting statement: reply only NOTHING.
+
+Valid examples:
+DISCOVERY: What has been your experience with AWS Bedrock over these two months?
+DISCOVERY: What led you to choose this solution over the alternatives?
+DISCOVERY: How does that impact your day-to-day operations concretely?
+DISCOVERY: What would you have done differently with hindsight?
+
+Example if nothing interesting:
+NOTHING`;
+
 // ─── Prompt getters (dynamic by language) ────────────────────────────────────
 function promptQuestions() { return language === 'fr' ? SYSTEM_PROMPT_QUESTIONS : SYSTEM_PROMPT_QUESTIONS_EN; }
 function promptAnswer()    { return language === 'fr' ? SYSTEM_PROMPT_ANSWER    : SYSTEM_PROMPT_ANSWER_EN; }
 function promptActions()   { return language === 'fr' ? SYSTEM_PROMPT_ACTIONS   : SYSTEM_PROMPT_ACTIONS_EN; }
 function promptSummary()   { return language === 'fr' ? SYSTEM_PROMPT_SUMMARY   : SYSTEM_PROMPT_SUMMARY_EN; }
 function promptKeyPoints() { return language === 'fr' ? SYSTEM_PROMPT_KEYPOINTS : SYSTEM_PROMPT_KEYPOINTS_EN; }
+function promptDiscovery() { return language === 'fr' ? SYSTEM_PROMPT_DISCOVERY : SYSTEM_PROMPT_DISCOVERY_EN; }
 
 // ─── Global state ─────────────────────────────────────────────────────────────
 let ws          = null;
@@ -212,6 +272,12 @@ let llmBusyQ    = false;
 let llmQueueAns = [];
 let llmBusyAns  = false;
 
+// LLM — real-time discovery questions (with history)
+let discoveryQuestions = [];  // [string]
+let llmHistoryD = [{ role: 'system', content: promptDiscovery() }];
+let llmQueueD   = [];
+let llmBusyD    = false;
+
 // LLM — connection
 let llmModelId   = 'local-model';
 let llmConnected = false;
@@ -255,6 +321,7 @@ const transcriptEl  = document.getElementById('transcript-area');
 const keypointsList = document.getElementById('keypoints-list');
 const questionsList = document.getElementById('questions-list');
 const actionsList   = document.getElementById('actions-list');
+const discoveryList = document.getElementById('discovery-list');
 const tsBody        = document.getElementById('timestamps-body');
 const meetingCtxBar = document.getElementById('meeting-context-bar');
 const ctxCompany    = document.getElementById('ctx-company');
@@ -546,7 +613,10 @@ function maybeTriggerQuestions(flush = false) {
                      || allSentences.slice(lastSentIdx).map(s => s.segment).join(' ');
     lastSentIdx = allSentences.length;            // trigger pointer — avance au déclenchement
     wordBufQ    = 0;
-    if (fragment.trim()) { llmQueueQ.push(fragment); processQuestionQueue(); }
+    if (fragment.trim()) {
+      llmQueueQ.push(fragment); processQuestionQueue();
+      llmQueueD.push(fragment); processDiscoveryQueue();
+    }
   }
 }
 
@@ -662,6 +732,49 @@ async function processAnswerQueue() {
   if (llmQueueAns.length > 0) processAnswerQueue();
 }
 
+// ─── LLM — Real-time discovery questions ─────────────────────────────────────
+async function processDiscoveryQueue() {
+  if (llmBusyD || llmQueueD.length === 0) return;
+  llmBusyD = true;
+
+  const fragment = llmQueueD.shift();
+  llmHistoryD.push({ role: 'user', content: fragment });
+
+  try {
+    await checkLmStudio();
+    if (!llmConnected) { llmHistoryD.pop(); llmBusyD = false; return; }
+
+    const url  = urlInput.value.trim();
+    const resp = await fetch(url + '/chat/completions', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+      body:    JSON.stringify({
+        model: llmModelId, messages: llmHistoryD,
+        temperature: 0.4, max_tokens: 256, stream: true,
+      }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const { fullResponse } = await streamSSE(resp, (line) => {
+      if (line.toUpperCase().startsWith('DISCOVERY:')) {
+        const text = line.slice(10).trim();
+        if (text && !discoveryQuestions.includes(text)) {
+          discoveryQuestions.push(text);
+          renderDiscovery();
+        }
+      }
+    });
+
+    llmHistoryD.push({ role: 'assistant', content: fullResponse });
+  } catch (e) {
+    console.error('[llm-d]', e);
+    llmHistoryD.pop();
+  }
+
+  llmBusyD = false;
+  if (llmQueueD.length > 0) processDiscoveryQueue();
+}
+
 // ─── Wait for all real-time LLM queues to be idle ────────────────────────────
 // Résout quand les 3 queues (key-points, questions, réponses) sont vides et inactives.
 // Timeout de sécurité : 120 s (au-delà, on sauvegarde ce qu'on a).
@@ -671,7 +784,8 @@ function waitForQueues(timeoutMs = 120000) {
     (function check() {
       const idle = !llmBusyK   && llmQueueK.length   === 0
                 && !llmBusyQ   && llmQueueQ.length   === 0
-                && !llmBusyAns && llmQueueAns.length === 0;
+                && !llmBusyAns && llmQueueAns.length === 0
+                && !llmBusyD   && llmQueueD.length   === 0;
       if (idle) {
         resolve();
       } else if (Date.now() >= deadline) {
@@ -914,14 +1028,15 @@ async function autoSave() {
 
   try {
     await window.electronAPI.db.saveMeetingData(currentMeetingId, {
-      sentences:    allSentences,
+      sentences:         allSentences,
       keyPoints,
-      questions:    questions.map(q => ({ text: q.text, answer: q.answer || '' })),
+      questions:         questions.map(q => ({ text: q.text, answer: q.answer || '' })),
       actions,
-      summary:      summaryText,
-      nextSteps:    nextStepsText,
+      discoveryQuestions,
+      summary:           summaryText,
+      nextSteps:         nextStepsText,
       duration,
-      audioPath:    savedAudioPath,
+      audioPath:         savedAudioPath,
       speakerNames,
     });
     showNotification('Meeting saved ✓');
@@ -1019,6 +1134,38 @@ function renderActions() {
       const idx = parseInt(e.currentTarget.dataset.idx, 10);
       actions.splice(idx, 1);
       renderActions();
+    });
+  });
+}
+
+function renderDiscovery() {
+  if (!discoveryList) return;
+  if (discoveryQuestions.length === 0) { discoveryList.innerHTML = ''; return; }
+  discoveryList.innerHTML = discoveryQuestions.map((q, i) => `
+    <div class="discovery-item">
+      <span class="discovery-icon">?</span>
+      <span class="discovery-text">${escHtml(q)}</span>
+      <button class="btn-copy-discovery" data-text="${escHtml(q)}" title="Copy">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+      </button>
+      <button class="btn-delete-item" data-idx="${i}" title="Delete">&#10005;</button>
+    </div>
+  `).join('');
+  discoveryList.querySelectorAll('.btn-copy-discovery').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const text = e.currentTarget.dataset.text;
+      navigator.clipboard.writeText(text).catch(() => {});
+      e.currentTarget.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      setTimeout(() => {
+        e.currentTarget.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+      }, 1500);
+    });
+  });
+  discoveryList.querySelectorAll('.btn-delete-item').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.idx, 10);
+      discoveryQuestions.splice(idx, 1);
+      renderDiscovery();
     });
   });
 }
@@ -1308,11 +1455,15 @@ function resetAll() {
   llmHistoryK  = [{ role: 'system', content: promptKeyPoints() }];
   llmQueueK    = [];
   llmBusyK     = false;
-  llmHistoryQ  = [{ role: 'system', content: promptQuestions() }];
-  llmQueueQ    = [];
-  llmBusyQ     = false;
-  llmQueueAns  = [];
-  llmBusyAns   = false;
+  llmHistoryQ      = [{ role: 'system', content: promptQuestions() }];
+  llmQueueQ        = [];
+  llmBusyQ         = false;
+  llmQueueAns      = [];
+  llmBusyAns       = false;
+  discoveryQuestions = [];
+  llmHistoryD      = [{ role: 'system', content: promptDiscovery() }];
+  llmQueueD        = [];
+  llmBusyD         = false;
 
   transcriptEl.value      = '';
   const tDisplay = document.getElementById('transcript-display');
@@ -1322,6 +1473,7 @@ function resetAll() {
   if (keypointsList) keypointsList.innerHTML = '';
   questionsList.innerHTML = '';
   actionsList.innerHTML   = '';
+  if (discoveryList) discoveryList.innerHTML = '';
   tsBody.innerHTML        = '';
   const summaryCard = document.getElementById('summary-card');
   if (summaryCard) summaryCard.classList.add('hidden');
@@ -1432,6 +1584,7 @@ document.querySelectorAll('.lang-btn').forEach(btn => {
     localStorage.setItem('parakeet-analysis-lang', language);
     document.querySelectorAll('.lang-btn').forEach(b => b.classList.toggle('active', b === btn));
     llmHistoryQ = [{ role: 'system', content: promptQuestions() }]; // reset history
+    llmHistoryD = [{ role: 'system', content: promptDiscovery() }]; // reset discovery history
   });
 });
 

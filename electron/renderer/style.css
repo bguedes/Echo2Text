@@ -35,6 +35,11 @@
   --red-bg:        rgba(220, 38, 38, 0.08);
   --red-border:    rgba(220, 38, 38, 0.20);
 
+  /* ── Discovery (teal) ── */
+  --discovery:        #0D9488;
+  --discovery-bg:     rgba(13, 148, 136, 0.07);
+  --discovery-border: rgba(13, 148, 136, 0.25);
+
   /* ── Radius ── */
   --radius-xs:     4px;
   --radius-sm:     6px;
@@ -643,6 +648,64 @@ button:focus-visible {
   animation: pulse-text 1.4s ease-in-out infinite;
 }
 .detecting.muted { color: var(--text-dim); animation: none; }
+
+/* ─── Discovery items ───────────────────────────────────────────────────────── */
+.discovery-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+.discovery-item:last-child { border-bottom: none; }
+
+.discovery-icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--discovery-bg);
+  border: 1px solid var(--discovery-border);
+  color: var(--discovery);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+
+.discovery-text {
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  font-style: italic;
+}
+
+.btn-copy-discovery {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--discovery);
+  cursor: pointer;
+  padding: 2px 4px;
+  opacity: 0;
+  border-radius: var(--radius-xs);
+  transition: opacity 0.12s, background 0.12s;
+  display: flex;
+  align-items: center;
+  margin-top: 1px;
+}
+.discovery-item:hover .btn-copy-discovery,
+.discovery-item:hover .btn-delete-item { opacity: 1; }
+.btn-copy-discovery:hover { background: var(--discovery-bg); }
+
+.discovery-badge {
+  color: var(--discovery) !important;
+  background: var(--discovery-bg) !important;
+  border-color: var(--discovery-border) !important;
+}
 
 /* ─── Inline delete buttons ─────────────────────────────────────────────────── */
 .btn-delete-item {
@@ -1771,6 +1834,10 @@ body[data-theme="dark"] {
   --red-bg:        rgba(224, 82, 82, 0.12);
   --red-border:    rgba(224, 82, 82, 0.25);
 
+  --discovery:        #2dd4bf;
+  --discovery-bg:     rgba(45, 212, 191, 0.10);
+  --discovery-border: rgba(45, 212, 191, 0.28);
+
   --el-bg:         #252840;
   --el-bg-hover:   #2d3150;
   --el-bg-hover2:  #353960;
@@ -1815,6 +1882,10 @@ body[data-theme="nord"] {
   --red-bg:        rgba(191, 97, 106, 0.12);
   --red-border:    rgba(191, 97, 106, 0.25);
 
+  --discovery:        #88d8c8;
+  --discovery-bg:     rgba(136, 216, 200, 0.10);
+  --discovery-border: rgba(136, 216, 200, 0.28);
+
   --el-bg:         #3b4252;
   --el-bg-hover:   #434c5e;
   --el-bg-hover2:  #4c566a;
@@ -1858,6 +1929,10 @@ body[data-theme="sepia"] {
   --red:           #8b2635;
   --red-bg:        rgba(139, 38, 53, 0.08);
   --red-border:    rgba(139, 38, 53, 0.20);
+
+  --discovery:        #0f766e;
+  --discovery-bg:     rgba(15, 118, 110, 0.07);
+  --discovery-border: rgba(15, 118, 110, 0.22);
 
   --el-bg:         #e8e0cc;
   --el-bg-hover:   #ddd5bc;

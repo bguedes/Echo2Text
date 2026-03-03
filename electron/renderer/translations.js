@@ -51,6 +51,7 @@ const TRANSLATIONS = {
     // QA panel
     'qa.keypoints': 'Key points',
     'qa.questions': 'Questions',
+    'qa.discovery': 'Questions to ask',
     'qa.actions':   'Actions',
 
     // Badges
@@ -166,6 +167,7 @@ const TRANSLATIONS = {
 
     'qa.keypoints': 'Points clés',
     'qa.questions': 'Questions',
+    'qa.discovery': 'Questions à poser',
     'qa.actions':   'Actions',
 
     'badge.realtime':     'temps réel',

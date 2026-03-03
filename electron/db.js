@@ -148,11 +148,12 @@ function createMeeting(companyId, title, description = '', service = '') {
     audio_path:       '',
     status:           'recording',
     created_at:       new Date().toISOString(),
-    sentences:        [],
-    questions:        [],
-    actions:          [],
-    summary:          null,
-    speaker_names:    {},
+    sentences:          [],
+    questions:          [],
+    actions:            [],
+    discovery_questions: [],
+    summary:            null,
+    speaker_names:      {},
   };
   writeJSON(meetingPath(id), meeting);
   return { id };
@@ -171,7 +172,7 @@ function deleteMeeting(id) {
 }
 
 // ─── Bulk save (atomic) ───────────────────────────────────────────────────────
-function saveMeetingData(meetingId, { sentences, keyPoints, questions, actions, summary, nextSteps, duration, audioPath, speakerNames }) {
+function saveMeetingData(meetingId, { sentences, keyPoints, questions, actions, discoveryQuestions, summary, nextSteps, duration, audioPath, speakerNames }) {
   const m = readJSON(meetingPath(meetingId), null);
   if (!m) return;
 
@@ -185,8 +186,9 @@ function saveMeetingData(meetingId, { sentences, keyPoints, questions, actions, 
     speaker:    s.speaker ?? null,
   }));
 
-  if (speakerNames !== undefined) m.speaker_names = speakerNames;
-  if (keyPoints    !== undefined) m.key_points    = (keyPoints || []).filter(Boolean);
+  if (speakerNames        !== undefined) m.speaker_names       = speakerNames;
+  if (keyPoints           !== undefined) m.key_points          = (keyPoints || []).filter(Boolean);
+  if (discoveryQuestions  !== undefined) m.discovery_questions = (discoveryQuestions || []).filter(Boolean);
 
   m.questions = (questions || []).map((q, i) => ({
     id:         nextId(),
