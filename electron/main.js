@@ -441,6 +441,9 @@ ipcMain.handle('db:toggle-action-status', (_e, { actionId, status }) =>
   db.toggleActionStatus(actionId, status)
 );
 
+ipcMain.handle('db:save-company-analysis', (_e, { id, text }) => db.saveCompanyAnalysis(id, text));
+ipcMain.handle('db:get-company-analysis',  (_e, { id })       => db.getCompanyAnalysis(id));
+
 // ─── IPC : audio:save ────────────────────────────────────────────────────────
 ipcMain.handle('audio:save', (_e, { meetingId, dataBase64 }) => {
   const dataDir  = path.join(app.getPath('userData'), 'parakeet-data');

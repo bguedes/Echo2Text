@@ -6,6 +6,7 @@ let companies          = [];
 let selectedCompanyId  = null;
 let meetings           = [];
 let selectedMeetingId  = null;
+let analysisAbortCtrl  = null; // cancel in-flight generation
 
 // ─── DOM elements ─────────────────────────────────────────────────────────────
 const libraryPanel        = document.getElementById('library-panel');
@@ -15,6 +16,9 @@ const libTimelineList     = document.getElementById('lib-timeline-list');
 const libTimelinePane     = document.getElementById('lib-timeline-pane');
 const libMeetingDetail    = document.getElementById('lib-meeting-detail');
 const libEmptyHint        = document.getElementById('lib-empty-hint');
+
+const libAnalysisPane     = document.getElementById('lib-analysis-pane');
+const btnAnalysis         = document.getElementById('btn-analysis');
 
 const meetingSetupModal     = document.getElementById('meeting-setup-modal');
 const modalCompanySelect    = document.getElementById('modal-company-select');
@@ -83,8 +87,12 @@ async function selectCompany(id, name) {
   renderCompanies();
   libCompanyNameTitle.textContent = name || '';
   libMeetingDetail.classList.add('hidden');
+  libAnalysisPane.classList.add('hidden');
   libEmptyHint.classList.add('hidden');
   libTimelinePane.classList.remove('hidden');
+  btnAnalysis.disabled = false;
+  // Cancel any in-flight analysis generation
+  if (analysisAbortCtrl) { analysisAbortCtrl.abort(); analysisAbortCtrl = null; }
   await loadTimeline(id);
 }
 
@@ -189,7 +197,10 @@ function renderTimeline(list) {
 async function selectMeeting(id) {
   selectedMeetingId = id;
   renderTimeline(meetings); // refresh active state in timeline
+  libAnalysisPane.classList.add('hidden');
   libMeetingDetail.classList.remove('hidden');
+  // Cancel any in-flight analysis generation
+  if (analysisAbortCtrl) { analysisAbortCtrl.abort(); analysisAbortCtrl = null; }
   try {
     const meeting = await window.electronAPI.db.getMeeting(id);
     if (meeting) renderMeetingDetail(meeting);
@@ -666,12 +677,291 @@ function formatDuration(sec) {
   return m > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : `${s}s`;
 }
 
+// ─── Analysis helpers ──────────────────────────────────────────────────────────
+const getLmStudioUrl  = () => (document.getElementById('lmstudio-url')?.value || '').trim() || 'http://localhost:1234/v1';
+const getAnalysisLang = () => localStorage.getItem('parakeet-analysis-lang') || 'en';
+
+function formatAnalysisHtml(text) {
+  const lines = text.split('\n');
+  let html = '';
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line) { html += '<br>'; continue; }
+    // Section heading
+    const hm = line.match(/^##\s+(.+)$/);
+    if (hm) { html += `<h3 class="analysis-section-title">${escHtml(hm[1])}</h3>`; continue; }
+    // Done badge [✓] or ✓
+    const dm = line.match(/^\[✓\]\s*(.*)$/) || line.match(/^✓\s+(.+)$/);
+    if (dm) { html += `<p><span class="badge-done">✓</span> ${escHtml(dm[1])}</p>`; continue; }
+    // Pending badge [ ] or ☐
+    const pm = line.match(/^\[ \]\s*(.*)$/) || line.match(/^☐\s+(.+)$/);
+    if (pm) { html += `<p><span class="badge-pending">☐</span> ${escHtml(pm[1])}</p>`; continue; }
+    // Warning ⚠
+    const wm = line.match(/^⚠\s*(.+)$/);
+    if (wm) { html += `<p><span class="badge-warn">⚠</span> ${escHtml(wm[1])}</p>`; continue; }
+    // Default paragraph
+    html += `<p>${escHtml(line)}</p>`;
+  }
+  return html;
+}
+
+function buildAnalysisPrompt(companyName, fullMeetings, lang) {
+  // Sort meetings chronologically (oldest first)
+  const sorted = [...fullMeetings].sort((a, b) =>
+    (a.recorded_at || '').localeCompare(b.recorded_at || ''));
+
+  // Group by service
+  const byService = new Map();
+  for (const m of sorted) {
+    const svc = m.service || '—';
+    if (!byService.has(svc)) byService.set(svc, []);
+    byService.get(svc).push(m);
+  }
+
+  let userContent = `Company: ${companyName}\n\n`;
+  for (const [svc, svcMeetings] of byService) {
+    userContent += `### Team / Service: ${svc}\n\n`;
+    for (const m of svcMeetings) {
+      const date = m.recorded_at ? new Date(m.recorded_at).toLocaleDateString() : '?';
+      userContent += `Meeting: "${m.title}" — ${date}\n`;
+      if (m.summary?.summary_text) userContent += `Summary: ${m.summary.summary_text}\n`;
+      if (m.key_points?.length) {
+        userContent += `Key points:\n${m.key_points.map(k => `  - ${k}`).join('\n')}\n`;
+      }
+      if (m.actions?.length) {
+        userContent += `Actions:\n${m.actions.map(a =>
+          `  ${a.status === 'done' ? '[✓]' : '[ ]'} ${a.text}`).join('\n')}\n`;
+      }
+      if (m.questions?.length) {
+        userContent += `Questions & answers:\n${m.questions.map((q, i) =>
+          `  Q${i+1}: ${q.text}${q.answer ? `\n    A: ${q.answer}` : ''}`).join('\n')}\n`;
+      }
+      userContent += '\n';
+    }
+  }
+
+  const systemFr = `Tu es un expert CRM et suivi relation client/prospect.
+Analyse l'historique et produis un rapport avec EXACTEMENT ces sections :
+
+## Synthèse globale
+## Évolution du suivi
+## Actions réalisées ✓
+## Actions en attente ⏳
+## Points de vigilance ⚠
+## Recommandations & prochaines étapes
+
+Sois précis, concret, actionnable. Appuie-toi uniquement sur les données fournies.`;
+
+  const systemEn = `You are a CRM and client/prospect relationship expert.
+Analyze the history and produce a report with EXACTLY these sections:
+
+## Global summary
+## Relationship progression
+## Completed actions ✓
+## Pending actions ⏳
+## Watch points ⚠
+## Recommendations & next steps
+
+Be precise, concrete, actionable. Base yourself only on the provided data.`;
+
+  return {
+    system: lang === 'fr' ? systemFr : systemEn,
+    user: userContent,
+  };
+}
+
+async function libStreamSSE(resp, signal, onToken) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    if (signal?.aborted) break;
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (data === '[DONE]') return;
+      try {
+        const parsed = JSON.parse(data);
+        const chunk = parsed.choices?.[0]?.delta?.content;
+        if (chunk) onToken(chunk);
+      } catch (_) {}
+    }
+  }
+}
+
+async function runAnalysisLLM(companyId, companyName) {
+  // Cancel any previous generation
+  if (analysisAbortCtrl) { analysisAbortCtrl.abort(); }
+  analysisAbortCtrl = new AbortController();
+  const signal = analysisAbortCtrl.signal;
+
+  // Show spinner
+  libAnalysisPane.innerHTML = `
+    <div class="analysis-header">
+      <span class="analysis-title">${escHtml(companyName)}</span>
+    </div>
+    <div class="analysis-loading">
+      <div class="analysis-spinner">⟳</div>
+      <span>${getAnalysisLang() === 'fr' ? 'Analyse en cours…' : 'Generating analysis…'}</span>
+    </div>`;
+
+  try {
+    // Fetch all full meetings for this company
+    const meetingHeaders = meetings; // already loaded
+    const fullMeetings = await Promise.all(
+      meetingHeaders.map(m => window.electronAPI.db.getMeeting(m.id))
+    );
+    const validMeetings = fullMeetings.filter(Boolean);
+
+    if (signal.aborted) return;
+
+    const lang = getAnalysisLang();
+    const { system, user } = buildAnalysisPrompt(companyName, validMeetings, lang);
+    const baseUrl = getLmStudioUrl();
+
+    // Check LMStudio availability
+    let lmAvailable = false;
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 2000);
+      const check = await fetch(`${baseUrl}/models`, { signal: ctrl.signal });
+      lmAvailable = check.ok;
+    } catch (_) {}
+
+    if (!lmAvailable) {
+      libAnalysisPane.innerHTML = `
+        <div class="analysis-header">
+          <span class="analysis-title">${escHtml(companyName)}</span>
+        </div>
+        <div class="analysis-error">${lang === 'fr'
+          ? '⚠ LMStudio inaccessible. Vérifiez que le serveur est démarré sur ' + escHtml(baseUrl)
+          : '⚠ LMStudio unavailable. Make sure the server is running at ' + escHtml(baseUrl)}</div>`;
+      return;
+    }
+
+    if (signal.aborted) return;
+
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user',   content: user },
+        ],
+        stream: true,
+        temperature: 0.3,
+        max_tokens: 1500,
+      }),
+      signal,
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    // Show streaming body
+    libAnalysisPane.innerHTML = `
+      <div class="analysis-header">
+        <span class="analysis-title">${escHtml(companyName)}</span>
+      </div>
+      <div class="analysis-body" id="analysis-body-content"></div>`;
+    const bodyEl = libAnalysisPane.querySelector('#analysis-body-content');
+
+    let fullText = '';
+    let renderTimer = null;
+
+    const flush = () => {
+      bodyEl.innerHTML = formatAnalysisHtml(fullText);
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    };
+
+    await libStreamSSE(resp, signal, (chunk) => {
+      fullText += chunk;
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(flush, 60);
+    });
+
+    clearTimeout(renderTimer);
+    flush();
+
+    if (signal.aborted) return;
+
+    // Save to DB
+    await window.electronAPI.db.saveCompanyAnalysis(companyId, fullText);
+
+    // Add header with date + Regenerate button
+    const now = new Date().toLocaleString();
+    libAnalysisPane.innerHTML = `
+      <div class="analysis-header">
+        <span class="analysis-title">${escHtml(companyName)}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="analysis-date">${escHtml(now)}</span>
+          <button class="btn-sm" id="btn-regen-analysis">${lang === 'fr' ? '⟳ Régénérer' : '⟳ Regenerate'}</button>
+        </div>
+      </div>
+      <div class="analysis-body">${formatAnalysisHtml(fullText)}</div>`;
+    libAnalysisPane.querySelector('#btn-regen-analysis')?.addEventListener('click', () => {
+      runAnalysisLLM(selectedCompanyId, companyName);
+    });
+
+  } catch (err) {
+    if (err.name === 'AbortError') return; // silently cancelled
+    const lang = getAnalysisLang();
+    libAnalysisPane.innerHTML = `
+      <div class="analysis-header">
+        <span class="analysis-title">${escHtml(companyName)}</span>
+      </div>
+      <div class="analysis-error">⚠ ${escHtml(String(err.message || err))}</div>`;
+  }
+}
+
+async function showAnalysisPane(companyId, companyName) {
+  libMeetingDetail.classList.add('hidden');
+  libEmptyHint.classList.add('hidden');
+  libAnalysisPane.classList.remove('hidden');
+
+  const lang = getAnalysisLang();
+
+  // Check for cached analysis
+  let cached = null;
+  try { cached = await window.electronAPI.db.getCompanyAnalysis(companyId); } catch (_) {}
+
+  if (cached?.text) {
+    const date = cached.generated_at ? new Date(cached.generated_at).toLocaleString() : '';
+    libAnalysisPane.innerHTML = `
+      <div class="analysis-header">
+        <span class="analysis-title">${escHtml(companyName)}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          ${date ? `<span class="analysis-date">${escHtml(date)}</span>` : ''}
+          <button class="btn-sm" id="btn-regen-analysis">${lang === 'fr' ? '⟳ Régénérer' : '⟳ Regenerate'}</button>
+        </div>
+      </div>
+      <div class="analysis-body">${formatAnalysisHtml(cached.text)}</div>`;
+    libAnalysisPane.querySelector('#btn-regen-analysis')?.addEventListener('click', () => {
+      runAnalysisLLM(companyId, companyName);
+    });
+  } else {
+    // No cache — generate immediately
+    await runAnalysisLLM(companyId, companyName);
+  }
+}
+
 // ─── Events ───────────────────────────────────────────────────────────────────
 document.getElementById('btn-close-library').addEventListener('click', closeLibrary);
 document.getElementById('btn-new-company').addEventListener('click', createCompanyFromLib);
 document.getElementById('btn-new-meeting-from-lib').addEventListener('click', () => {
   closeLibrary();
   openMeetingSetup();
+});
+
+btnAnalysis.addEventListener('click', () => {
+  if (selectedCompanyId === null) return;
+  const company = companies.find(c => c.id === selectedCompanyId);
+  showAnalysisPane(selectedCompanyId, company?.name || String(selectedCompanyId));
 });
 
 document.getElementById('modal-btn-cancel').addEventListener('click', closeMeetingSetup);

@@ -241,9 +241,25 @@ function toggleActionStatus(actionId, status) {
   } catch (_) {}
 }
 
+// ─── Company analysis ─────────────────────────────────────────────────────────
+function saveCompanyAnalysis(id, text) {
+  const list = readJSON(companiesPath(), []);
+  const c = list.find(c => c.id === id);
+  if (!c) return;
+  c.analysis = { text, generated_at: new Date().toISOString() };
+  writeJSON(companiesPath(), list);
+}
+
+function getCompanyAnalysis(id) {
+  const list = readJSON(companiesPath(), []);
+  const c = list.find(c => c.id === id);
+  return c?.analysis || null; // { text, generated_at } | null
+}
+
 module.exports = {
   initDB,
   getCompanies, createCompany, updateCompany, deleteCompany,
   getMeetings, getMeeting, createMeeting, updateMeeting, deleteMeeting,
   saveMeetingData, toggleActionStatus,
+  saveCompanyAnalysis, getCompanyAnalysis,
 };

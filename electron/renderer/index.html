@@ -235,10 +235,14 @@
         <div id="lib-timeline-pane" class="hidden">
           <div class="lib-col-header">
             <span id="lib-company-name-title"></span>
-            <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
+            <div style="display:flex;gap:6px;align-items:center">
+              <button id="btn-analysis" class="btn-sm btn-sm-icon" disabled title="Generate global analysis">⟳ Analysis</button>
+              <button id="btn-new-meeting-from-lib" class="btn-sm">+ New meeting</button>
+            </div>
           </div>
           <div id="lib-timeline-list"></div>
         </div>
+        <div id="lib-analysis-pane" class="hidden"></div>
         <div id="lib-meeting-detail" class="hidden"></div>
         <div id="lib-empty-hint">
           <p data-i18n="lib.empty_hint">Select a company to view its meetings.</p>

@@ -1666,6 +1666,113 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 .btn-danger:hover { background: rgba(220, 38, 38, 0.14); }
 
+/* ─── Analysis pane ──────────────────────────────────────────────────────────── */
+#lib-analysis-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  border-left: 1px solid var(--border);
+}
+
+.analysis-header {
+  flex-shrink: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.analysis-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.analysis-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin: 20px 0 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.analysis-section-title:first-child { margin-top: 0; }
+
+.analysis-body p { margin: 3px 0; }
+
+.badge-done {
+  display: inline-block;
+  background: rgba(22, 163, 74, 0.13);
+  color: #16a34a;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-pending {
+  display: inline-block;
+  background: rgba(234, 88, 12, 0.13);
+  color: #ea580c;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+.badge-warn {
+  display: inline-block;
+  background: rgba(234, 179, 8, 0.13);
+  color: #ca8a04;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.analysis-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: var(--text-muted);
+  gap: 12px;
+  padding: 40px;
+}
+
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.analysis-spinner {
+  font-size: 24px;
+  display: inline-block;
+  animation: spin 1.2s linear infinite;
+}
+
+.analysis-date {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.analysis-error {
+  color: var(--red, #dc2626);
+  padding: 20px 24px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* ─── Web URL row ────────────────────────────────────────────────────────────── */
 .url-source-row {
   flex: 0 0 100%;
