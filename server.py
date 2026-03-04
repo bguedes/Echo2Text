@@ -124,11 +124,14 @@ def load_diarization():
         emb = Inference(emb_model, window="whole")
         if torch.cuda.is_available():
             device = torch.device('cuda')
-        elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-            device = torch.device('mps')
         else:
+            # MPS (Apple Silicon) excluded: several pyannote ops (SincNet, etc.)
+            # are not fully supported on MPS and cause device-mismatch errors
+            # between the pipeline and the embedding model.  CPU is reliable on
+            # all platforms and fast enough for speaker diarization.
             device = torch.device('cpu')
         pipe.to(device)
+        emb_model.to(device)  # keep embedding model on the same device as pipeline
         with _diar_lock:
             _diar_pipeline   = pipe
             _embedding_model = emb
