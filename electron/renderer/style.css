@@ -413,20 +413,6 @@ button:focus-visible {
 #app.show-segments #live-text       { flex: 0 0 200px; }
 #app.show-segments #timestamps-card { flex: 1; min-height: 80px; }
 
-#live-text textarea {
-  width: 100%;
-  height: 100%;
-  background: transparent;
-  border: none;
-  color: var(--text);
-  font-size: 14px;
-  resize: none;
-  outline: none;
-  font-family: var(--font);
-  line-height: 1.65;
-}
-#live-text textarea::placeholder { color: var(--text-dim); }
-
 /* ─── Transcript display ─────────────────────────────────────────────────────── */
 .transcript-display {
   flex: 1;
@@ -455,9 +441,15 @@ button:focus-visible {
 .spk-color-4 { background: #f4a261; color: #222; }
 .spk-color-5 { background: #e9c46a; color: #222; }
 
-/* ─── Speakers panel ─────────────────────────────────────────────────────────── */
-.speakers-list { display: flex; flex-wrap: wrap; gap: 10px; padding: 6px 0; }
-.speaker-row   { display: flex; align-items: center; gap: 8px; }
+/* ─── Speakers panel (inline inside #live-text, no longer a floating card) ──── */
+#speakers-panel {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  margin-top: -2px;
+}
+.speakers-list { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 0; }
+.speaker-row   { display: flex; align-items: center; gap: 6px; }
 
 .speaker-name-input {
   background: var(--surface);
@@ -553,7 +545,37 @@ button:focus-visible {
   border-top: 1px solid var(--border);
 }
 
-.qa-section-header { flex-shrink: 0; }
+.qa-section-header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.qa-section-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  transition: color 0.15s, background 0.15s;
+}
+.qa-section-toggle:hover { color: var(--text); background: var(--border); }
+.qa-section-toggle svg { transition: transform 0.2s ease; }
+
+/* Collapsed state */
+.qa-section.collapsed {
+  flex: 0 0 auto;
+}
+.qa-section.collapsed .list-box {
+  display: none;
+}
+.qa-section.collapsed .qa-section-toggle svg {
+  transform: rotate(180deg);
+}
 
 /* List box — used in both qa-panel and elsewhere */
 .list-box {
@@ -747,30 +769,58 @@ tbody tr:hover .btn-delete-row { opacity: 1; }
   font-style: italic;
   animation: pulse-text 1.4s ease-in-out infinite;
 }
-.summary-text {
-  font-size: 13px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  color: var(--text);
-}
-.summary-next-steps-label {
-  font-size: 10px;
+/* ─── Rich summary renderer ───────────────────────────────────────────────── */
+.summary-rich { display: flex; flex-direction: column; gap: 2px; }
+
+.sr-section {
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: .05em;
   color: var(--accent);
-  margin-top: 4px;
+  margin: 14px 0 5px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
 }
-.summary-next-steps {
+.sr-section:first-child { margin-top: 0; }
+
+.sr-subsection {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 10px 0 4px;
+}
+
+.sr-para {
   font-size: 13px;
   line-height: 1.65;
-  white-space: pre-wrap;
-  color: var(--text-muted);
-  padding: 8px 12px;
-  border-left: 2px solid var(--accent);
-  background: var(--accent-bg);
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text);
+  margin: 2px 0;
 }
+
+.sr-item {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+  padding: 1px 0 1px 16px;
+  position: relative;
+}
+.sr-numbered::before {
+  content: counter(sr-cnt) ".";
+  counter-increment: sr-cnt;
+  position: absolute; left: 0;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 12px;
+}
+.sr-bullet::before {
+  content: "·";
+  position: absolute; left: 4px;
+  color: var(--accent);
+  font-weight: 700;
+}
+/* reset counter at each section */
+.sr-section { counter-reset: sr-cnt; }
 
 /* ─── Export row ─────────────────────────────────────────────────────────────── */
 .export-row {
@@ -1356,6 +1406,79 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   font-variant-numeric: tabular-nums;
 }
 
+/* ── Email recap pane ─────────────────────────────────────────────────────────── */
+.email-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+.email-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.email-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.email-generate-btn { font-size: 13px; }
+
+.email-body {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text);
+}
+.email-body p       { margin: 0 0 4px; }
+.email-gap          { height: 8px; }
+.email-body strong  { font-weight: 700; }
+.email-body em      { font-style: italic; }
+.email-hr           { border: none; border-top: 1px solid var(--border); margin: 12px 0; }
+.email-list         { margin: 0 0 6px; padding-left: 18px; }
+.email-list li      { padding: 2px 0; }
+.email-table        { border-collapse: collapse; width: 100%; margin: 8px 0 10px; font-size: 12px; }
+.email-table th,
+.email-table td     { border: 1px solid var(--border); padding: 5px 10px; vertical-align: top; text-align: left; }
+.email-table th     { font-weight: 600; background: var(--border); }
+
+/* Discovery questions in detail */
+.detail-discovery-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.detail-discovery-item:last-child { border-bottom: none; }
+.discovery-index {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1px;
+}
+.discovery-q-text { line-height: 1.5; }
+
 .detail-qa         { display: flex; flex-direction: column; gap: 10px; }
 .detail-qa-item    { display: flex; flex-direction: column; gap: 5px; }
 .detail-q          { font-size: 13px; font-weight: 500; }
@@ -1385,12 +1508,8 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   line-height: 1.65;
   white-space: pre-wrap;
 }
-.detail-nextsteps-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--accent);
-  margin-top: 6px;
-}
+/* .summary-rich in lib detail pane needs a bit more breathing room */
+.meeting-detail-pane[data-pane="summary"] .summary-rich { gap: 3px; }
 .detail-audio-player {
   width: 100%;
   height: 36px;
@@ -2075,3 +2194,76 @@ body[data-theme="sepia"] {
 body[data-theme="sepia"] input,
 body[data-theme="sepia"] textarea,
 body[data-theme="sepia"] select { color-scheme: light; }
+
+/* ─── Processing overlay (re-transcription + analysis blocker) ──────────────── */
+#processing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9000;
+}
+#processing-overlay.hidden { display: none; }
+
+.processing-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 40px 56px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  min-width: 320px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.45);
+}
+
+.processing-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.85s linear infinite;
+  flex-shrink: 0;
+}
+
+#processing-message {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  min-height: 22px;
+}
+
+.processing-progress-wrap {
+  width: 100%;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.processing-progress-bar {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+
+#processing-percent {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  min-height: 18px;
+}
+
+.processing-note {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0;
+}

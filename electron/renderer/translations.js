@@ -104,7 +104,9 @@ const TRANSLATIONS = {
     'tab.summary':    'Summary',
     'tab.keypoints':  'Key points',
     'tab.questions':  'Questions',
+    'tab.discovery':  'Discovery',
     'tab.actions':    'Actions',
+    'tab.email':      'Email',
     'tab.transcript': 'Transcript',
     'tab.segments':   'Segments',
 
@@ -115,7 +117,12 @@ const TRANSLATIONS = {
     'detail.next_steps':    'Next steps',
     'detail.no_keypoints':  'No key points extracted for this meeting.',
     'detail.no_questions':  'No questions detected.',
+    'detail.no_discovery':  'No discovery questions generated for this meeting.',
     'detail.no_actions':    'No actions detected.',
+    'detail.email_generate': 'Generate recap email',
+    'detail.email_regen':    '⟳ Regenerate',
+    'detail.email_copy':     'Copy',
+    'detail.email_copied':   'Copied!',
     'detail.no_transcript': 'No transcription available.',
     'detail.no_segments':   'No segments available.',
 
@@ -214,7 +221,9 @@ const TRANSLATIONS = {
     'tab.summary':    'Synthèse',
     'tab.keypoints':  'Points clés',
     'tab.questions':  'Questions',
+    'tab.discovery':  'Discovery',
     'tab.actions':    'Actions',
+    'tab.email':      'Email',
     'tab.transcript': 'Transcription',
     'tab.segments':   'Segments',
 
@@ -224,7 +233,12 @@ const TRANSLATIONS = {
     'detail.next_steps':    'Prochaines étapes',
     'detail.no_keypoints':  'Aucun point clé extrait pour cette réunion.',
     'detail.no_questions':  'Aucune question détectée.',
+    'detail.no_discovery':  'Aucune question de découverte générée pour cette réunion.',
     'detail.no_actions':    'Aucune action détectée.',
+    'detail.email_generate': 'Générer l\'email de compte rendu',
+    'detail.email_regen':    '⟳ Régénérer',
+    'detail.email_copy':     'Copier',
+    'detail.email_copied':   'Copié !',
     'detail.no_transcript': 'Aucune transcription disponible.',
     'detail.no_segments':   'Aucun segment disponible.',
 
@@ -296,14 +310,6 @@ function applyI18n() {
     el.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = t(key) + ' '; });
     if (badge && badgeKey) badge.textContent = t(badgeKey);
   });
-
-  // Speakers panel (has nested muted-label)
-  const spkLabel = document.querySelector('#speakers-panel .card-label');
-  if (spkLabel) {
-    const hint = spkLabel.querySelector('.muted-label');
-    spkLabel.childNodes.forEach(n => { if (n.nodeType === 3) n.textContent = t('card.speakers') + ' '; });
-    if (hint) hint.textContent = t('card.spk_hint');
-  }
 
   // Segment table headers
   document.querySelectorAll('thead th[data-i18n]').forEach(el => {

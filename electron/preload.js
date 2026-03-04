@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     toggleAction:         (actionId, status) => ipcRenderer.invoke('db:toggle-action-status', { actionId, status }),
     saveCompanyAnalysis:  (id, text)         => ipcRenderer.invoke('db:save-company-analysis', { id, text }),
     getCompanyAnalysis:   (id)               => ipcRenderer.invoke('db:get-company-analysis',  { id }),
+    saveEmailRecap:       (meetingId, text)  => ipcRenderer.invoke('db:save-email-recap', { meetingId, text }),
   },
 
   export: {

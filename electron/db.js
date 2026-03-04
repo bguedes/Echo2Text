@@ -256,10 +256,19 @@ function getCompanyAnalysis(id) {
   return c?.analysis || null; // { text, generated_at } | null
 }
 
+// ─── Meeting email recap ───────────────────────────────────────────────────────
+function saveEmailRecap(meetingId, text) {
+  const m = readJSON(meetingPath(meetingId), null);
+  if (!m) return;
+  m.email_recap = { text, generated_at: new Date().toISOString() };
+  writeJSON(meetingPath(meetingId), m);
+}
+
 module.exports = {
   initDB,
   getCompanies, createCompany, updateCompany, deleteCompany,
   getMeetings, getMeeting, createMeeting, updateMeeting, deleteMeeting,
   saveMeetingData, toggleActionStatus,
   saveCompanyAnalysis, getCompanyAnalysis,
+  saveEmailRecap,
 };

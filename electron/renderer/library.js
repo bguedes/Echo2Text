@@ -231,12 +231,10 @@ function renderMeetingDetail(m) {
     : `<span class="lib-empty" style="padding:0;font-style:italic">${_t('detail.audio_unavail')}</span>`;
 
   // ── Pane: Summary ──────────────────────────────────────────────────────────
-  const pSummary = m.summary
-    ? `<div class="detail-summary-text">${escHtml(m.summary.summary_text)}</div>
-       ${m.summary.next_steps
-         ? `<div class="detail-nextsteps-label">${_t('detail.next_steps')}</div>
-            <div class="detail-summary-text detail-summary-muted">${escHtml(Array.isArray(m.summary.next_steps) ? m.summary.next_steps.map(i => (typeof i === 'string' ? i : (i.text || i.action || i.description || i.step || JSON.stringify(i)))).join('\n') : String(m.summary.next_steps))}</div>`
-         : ''}`
+  const _sumText = m.summary?.summary_text || '';
+  const _renderSummary = typeof formatRichSummary === 'function' ? formatRichSummary : escHtml;
+  const pSummary = _sumText
+    ? `<div class="summary-rich">${_renderSummary(_sumText)}</div>`
     : `<div class="lib-empty">${_t('detail.no_summary')}</div>`;
 
   // ── Pane: Key points ───────────────────────────────────────────────────────
@@ -257,6 +255,16 @@ function renderMeetingDetail(m) {
           ${q.answer ? `<div class="detail-a">${escHtml(q.answer)}</div>` : ''}
         </div>`).join('')
     : `<div class="lib-empty">${_t('detail.no_questions')}</div>`;
+
+  // ── Pane: Discovery questions ──────────────────────────────────────────────
+  const dqList = m.discovery_questions || [];
+  const pDiscovery = dqList.length
+    ? dqList.map((q, i) => `
+        <div class="detail-discovery-item">
+          <span class="discovery-index">${i + 1}</span>
+          <span class="discovery-q-text">${escHtml(q)}</span>
+        </div>`).join('')
+    : `<div class="lib-empty">${_t('detail.no_discovery')}</div>`;
 
   // ── Pane: Actions ──────────────────────────────────────────────────────────
   const pActions = m.actions && m.actions.length
@@ -326,7 +334,9 @@ function renderMeetingDetail(m) {
       <button class="meeting-detail-tab active" data-tab="summary">${_t('tab.summary')}</button>
       <button class="meeting-detail-tab" data-tab="keypoints">${_t('tab.keypoints')}</button>
       <button class="meeting-detail-tab" data-tab="questions">${_t('tab.questions')}</button>
+      <button class="meeting-detail-tab" data-tab="discovery">${_t('tab.discovery')}</button>
       <button class="meeting-detail-tab" data-tab="actions">${_t('tab.actions')}</button>
+      <button class="meeting-detail-tab" data-tab="email">${_t('tab.email')}</button>
       <button class="meeting-detail-tab" data-tab="transcript">${_t('tab.transcript')}</button>
       <button class="meeting-detail-tab" data-tab="segments">${_t('tab.segments')}</button>
     </div>
@@ -334,7 +344,9 @@ function renderMeetingDetail(m) {
     <div class="meeting-detail-pane" data-pane="summary">${pSummary}</div>
     <div class="meeting-detail-pane hidden"  data-pane="keypoints">${pKeypoints}</div>
     <div class="meeting-detail-pane hidden"  data-pane="questions">${pQuestions}</div>
+    <div class="meeting-detail-pane hidden"  data-pane="discovery">${pDiscovery}</div>
     <div class="meeting-detail-pane hidden"  data-pane="actions">${pActions}</div>
+    <div class="meeting-detail-pane hidden"  data-pane="email" id="email-pane-${m.id}"></div>
     <div class="meeting-detail-pane hidden"  data-pane="transcript">${pTranscript}</div>
     <div class="meeting-detail-pane hidden"  data-pane="segments">${pSegments}</div>
   `;
@@ -347,6 +359,8 @@ function renderMeetingDetail(m) {
         t.classList.toggle('active', t === tab));
       libMeetingDetail.querySelectorAll('.meeting-detail-pane').forEach(p =>
         p.classList.toggle('hidden', p.dataset.pane !== target));
+      // Lazy-init email pane on first open
+      if (target === 'email') initEmailPane(m);
     });
   });
 
@@ -538,14 +552,11 @@ function buildMeetingHtml(m) {
 
   // ── Summary ──────────────────────────────────────────────────────────────────
   let summaryHtml = '';
-  if (m.summary) {
+  if (m.summary?.summary_text) {
+    const _expRender = typeof formatRichSummary === 'function' ? formatRichSummary : t => `<p>${esc(t)}</p>`;
     summaryHtml = `<div class="section">
       <h2>Summary</h2>
-      <p class="summary-text">${esc(m.summary.summary_text)}</p>
-      ${m.summary.next_steps ? `<h3>Next steps</h3><ul>${
-        (Array.isArray(m.summary.next_steps) ? m.summary.next_steps : [m.summary.next_steps])
-          .map(i => `<li>${esc(typeof i === 'string' ? i : (i.text || i.action || JSON.stringify(i)))}</li>`).join('')
-      }</ul>` : ''}
+      <div class="summary-rich export-summary">${_expRender(m.summary.summary_text)}</div>
     </div>`;
   }
 
@@ -568,6 +579,15 @@ function buildMeetingHtml(m) {
           <div class="q-text">Q${i + 1}. ${esc(q.text)}</div>
           ${q.answer ? `<div class="q-answer">${esc(q.answer)}</div>` : ''}
         </div>`).join('')}
+    </div>`;
+  }
+
+  // ── Discovery questions ───────────────────────────────────────────────────────
+  let discoveryHtml = '';
+  if (m.discovery_questions && m.discovery_questions.length) {
+    discoveryHtml = `<div class="section">
+      <h2>Discovery — Questions pour le prochain échange</h2>
+      <ol>${m.discovery_questions.map(q => `<li>${esc(q)}</li>`).join('')}</ol>
     </div>`;
   }
 
@@ -644,7 +664,7 @@ function buildMeetingHtml(m) {
 <body>
   <h1>${safeName}</h1>
   <div class="meta">${companyName ? esc(companyName) + ' · ' : ''}${date}${dur ? ' · ' + dur : ''}</div>
-  ${summaryHtml}${kpHtml}${qHtml}${actHtml}${transcriptHtml}
+  ${summaryHtml}${kpHtml}${qHtml}${discoveryHtml}${actHtml}${transcriptHtml}
 </body>
 </html>`;
 }
@@ -675,6 +695,306 @@ function formatDuration(sec) {
   const m = Math.floor(sec / 60);
   const s = sec % 60;
   return m > 0 ? `${m}m ${String(s).padStart(2,'0')}s` : `${s}s`;
+}
+
+// ─── Email recap ──────────────────────────────────────────────────────────────
+
+const EMAIL_SYSTEM_PROMPT = `Tu es un assistant expert en rédaction de comptes rendus professionnels.
+Tu reçois une transcription audio (avec ou sans diarisation des locuteurs).
+Tu dois produire un email de compte rendu clair, professionnel et actionnable.
+Réponds UNIQUEMENT avec l'email, sans commentaire ni explication autour.`;
+
+function buildEmailUserPrompt(m) {
+  const uiLang  = typeof window.getUiLang === 'function' ? window.getUiLang() : 'en';
+  const locale  = uiLang === 'fr' ? 'fr-FR' : 'en-GB';
+  const date    = m.recorded_at
+    ? new Date(m.recorded_at).toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : '';
+  const dur = m.duration_seconds ? formatDuration(m.duration_seconds) : '';
+
+  const speakerNames = m.speaker_names || {};
+  const speakerList  = Object.values(speakerNames).filter(Boolean);
+  const speakersStr  = speakerList.length ? speakerList.join(', ') : 'Non identifiés';
+
+  // Build transcription with speaker labels
+  let transcription = '';
+  if (m.sentences && m.sentences.length) {
+    const turns = [];
+    let cur = null;
+    for (const s of m.sentences) {
+      const spk = s.speaker ?? null;
+      if (!cur || cur.speaker !== spk) { cur = { speaker: spk, segs: [] }; turns.push(cur); }
+      cur.segs.push(s.segment);
+    }
+    transcription = turns.map(turn => {
+      const idx  = typeof turn.speaker === 'number' ? turn.speaker : -1;
+      const name = speakerNames[turn.speaker] || (idx >= 0 ? `Speaker ${idx + 1}` : 'Participant');
+      return `${name}: ${turn.segs.join(' ')}`;
+    }).join('\n\n');
+  } else {
+    transcription = 'Transcription non disponible.';
+  }
+
+  return `Voici la transcription de la réunion/conversation :
+
+<transcription>
+${transcription}
+</transcription>
+
+Métadonnées :
+- Date : ${date}
+- Durée : ${dur}
+- Participants identifiés : ${speakersStr}
+
+Génère un email de compte rendu professionnel en français avec la structure suivante :
+
+**Objet :** [Génère un objet d'email pertinent et concis]
+
+---
+
+Bonjour [prénom(s)],
+
+**Résumé de la réunion**
+[2-3 phrases résumant l'essentiel de la discussion, le contexte et l'objectif atteint ou non]
+
+**Points clés abordés**
+- [Point clé 1]
+- [Point clé 2]
+- [Point clé 3]
+(autant que nécessaire)
+
+**Décisions prises**
+- [Décision 1]
+- [Décision 2]
+(si aucune, indiquer "Aucune décision formelle prise lors de cet échange.")
+
+**Actions à réaliser**
+| Action | Responsable | Échéance |
+|--------|------------|----------|
+| [action 1] | [personne] | [date ou "À définir"] |
+| [action 2] | [personne] | [date ou "À définir"] |
+
+**Questions ouvertes / Points en suspens**
+- [Question ou point non résolu 1]
+- [Question ou point non résolu 2]
+(si aucune, supprimer cette section)
+
+**Prochaines étapes**
+[Description concise des prochaines étapes prévues, avec si possible une date de prochaine réunion ou jalon]
+
+---
+Cordialement,
+[Signature automatique]
+
+---
+INSTRUCTIONS IMPORTANTES :
+- Adopte un ton professionnel mais direct
+- Sois factuel : ne déduis que ce qui est clairement exprimé dans la transcription
+- Si un locuteur n'est pas identifié, utilise "Participant" ou le numéro de speaker (Speaker 1, Speaker 2...)
+- Si la transcription est incomplète ou peu claire sur un point, indique "[À confirmer]" plutôt qu'inventer
+- Longueur cible : email dense mais lisible, maximum 400 mots hors tableau`;
+}
+
+function renderEmailText(text) {
+  const lines = text.split('\n');
+  let html = '';
+  let inTable = false;
+  let tableRowCount = 0;
+  let inList  = false;
+
+  const closeTable = () => {
+    if (inTable) { html += '</table>'; inTable = false; tableRowCount = 0; }
+  };
+  const closeList = () => {
+    if (inList) { html += '</ul>'; inList = false; }
+  };
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+
+    // Blank line — close open structures, add spacing
+    if (!line) {
+      closeTable();
+      closeList();
+      html += '<div class="email-gap"></div>';
+      continue;
+    }
+
+    // Horizontal rule
+    if (line === '---') {
+      closeTable();
+      closeList();
+      html += '<hr class="email-hr">';
+      continue;
+    }
+
+    // Table row (starts with |)
+    if (line.startsWith('|')) {
+      closeList();
+      // Skip separator rows (|---|---|)
+      if (line.match(/^\|[-| :]+\|$/)) continue;
+      const cells = line.split('|').slice(1, -1).map(c => c.trim());
+      if (!inTable) {
+        html += '<table class="email-table">';
+        inTable = true;
+        tableRowCount = 0;
+      }
+      const tag = tableRowCount === 0 ? 'th' : 'td';
+      html += `<tr>${cells.map(c => `<${tag}>${inlineMd(c)}</${tag}>`).join('')}</tr>`;
+      tableRowCount++;
+      continue;
+    }
+
+    closeTable();
+
+    // Bullet list item
+    if (line.match(/^[ \t]*[-*] /)) {
+      const content = line.replace(/^[ \t]*[-*] /, '');
+      if (!inList) { html += '<ul class="email-list">'; inList = true; }
+      html += `<li>${inlineMd(content)}</li>`;
+      continue;
+    }
+
+    closeList();
+
+    // Regular line → paragraph
+    html += `<p>${inlineMd(line)}</p>`;
+  }
+
+  closeTable();
+  closeList();
+  return html;
+}
+
+function inlineMd(text) {
+  let s = escHtml(text);
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\*(.+?)\*/g,     '<em>$1</em>');
+  return s;
+}
+
+let emailAbortCtrl = null;
+
+function initEmailPane(m) {
+  const _t  = typeof window.t === 'function' ? window.t : (k => k);
+  const pane = document.getElementById(`email-pane-${m.id}`);
+  if (!pane || pane.dataset.initialized) return;
+  pane.dataset.initialized = '1';
+
+  if (m.email_recap?.text) {
+    renderEmailPane(pane, m.id, m.email_recap.text, m.email_recap.generated_at);
+  } else {
+    pane.innerHTML = `
+      <div class="email-empty">
+        <p>${_t('detail.email_generate_hint') || 'Aucun email généré pour cette réunion.'}</p>
+        <button class="btn-primary email-generate-btn">${_t('detail.email_generate')}</button>
+      </div>`;
+    pane.querySelector('.email-generate-btn').addEventListener('click', () => generateEmailRecap(pane, m));
+  }
+}
+
+function renderEmailPane(pane, meetingId, text, generatedAt) {
+  const _t  = typeof window.t === 'function' ? window.t : (k => k);
+  const date = generatedAt ? new Date(generatedAt).toLocaleString() : '';
+  pane.innerHTML = `
+    <div class="email-pane-header">
+      ${date ? `<span class="email-date">${escHtml(date)}</span>` : ''}
+      <div style="display:flex;gap:8px">
+        <button class="btn-sm email-copy-btn">${_t('detail.email_copy')}</button>
+        <button class="btn-sm email-regen-btn">${_t('detail.email_regen')}</button>
+      </div>
+    </div>
+    <div class="email-body" id="email-body-${meetingId}">${renderEmailText(text)}</div>`;
+
+  pane.querySelector('.email-copy-btn').addEventListener('click', async (e) => {
+    await navigator.clipboard.writeText(text).catch(() => {});
+    const btn = e.currentTarget;
+    btn.textContent = _t('detail.email_copied');
+    setTimeout(() => { btn.textContent = _t('detail.email_copy'); }, 1800);
+  });
+
+  pane.querySelector('.email-regen-btn').addEventListener('click', () => {
+    // Re-fetch full meeting to get latest data
+    window.electronAPI.db.getMeeting(meetingId).then(full => {
+      if (full) generateEmailRecap(pane, full);
+    });
+  });
+}
+
+async function generateEmailRecap(pane, m) {
+  if (emailAbortCtrl) emailAbortCtrl.abort();
+  emailAbortCtrl = new AbortController();
+  const signal = emailAbortCtrl.signal;
+  const lang   = getAnalysisLang();
+
+  pane.innerHTML = `
+    <div class="analysis-loading">
+      <div class="analysis-spinner">⟳</div>
+      <span>${lang === 'fr' ? 'Génération de l\'email…' : 'Generating email…'}</span>
+    </div>`;
+
+  const baseUrl = getLmStudioUrl();
+
+  try {
+    let lmAvailable = false;
+    try {
+      const ctrl = new AbortController();
+      setTimeout(() => ctrl.abort(), 2000);
+      const check = await fetch(`${baseUrl}/models`, { signal: ctrl.signal });
+      lmAvailable = check.ok;
+    } catch (_) {}
+
+    if (!lmAvailable) {
+      pane.innerHTML = `<div class="analysis-error">⚠ ${lang === 'fr' ? 'LMStudio inaccessible.' : 'LMStudio unavailable.'}</div>`;
+      return;
+    }
+    if (signal.aborted) return;
+
+    const resp = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: [
+          { role: 'system', content: EMAIL_SYSTEM_PROMPT },
+          { role: 'user',   content: buildEmailUserPrompt(m) },
+        ],
+        stream: true,
+        temperature: 0.3,
+        max_tokens: 2048,
+      }),
+      signal,
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    // Streaming display
+    pane.innerHTML = `<div class="email-body" id="email-body-stream"></div>`;
+    const bodyEl = pane.querySelector('#email-body-stream');
+
+    let fullText = '';
+    let renderTimer = null;
+    const flush = () => { bodyEl.innerHTML = renderEmailText(fullText); };
+
+    await libStreamSSE(resp, signal, chunk => {
+      fullText += chunk;
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(flush, 60);
+    });
+
+    clearTimeout(renderTimer);
+    flush();
+    if (signal.aborted) return;
+
+    // Save to DB
+    await window.electronAPI.db.saveEmailRecap(m.id, fullText);
+
+    // Re-render with header + copy/regen
+    renderEmailPane(pane, m.id, fullText, new Date().toISOString());
+
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    pane.innerHTML = `<div class="analysis-error">⚠ ${escHtml(String(err.message || err))}</div>`;
+  }
 }
 
 // ─── Analysis helpers ──────────────────────────────────────────────────────────

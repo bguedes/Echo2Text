@@ -32,6 +32,7 @@ Desktop application (Windows / macOS) for live meeting transcription with automa
 6. [Install Node.js Dependencies](#6-install-nodejs-dependencies)
 7. [Install and Configure LMStudio](#7-install-and-configure-lmstudio)
 8. [Speaker Diarization Setup (optional)](#8-speaker-diarization-setup-optional)
+   - [8.5 Tuning speaker detection accuracy](#85-tuning-speaker-detection-accuracy)
 9. [First Launch](#9-first-launch)
 10. [macOS Launch (Apple M3)](#10-macos-launch-apple-m3)
 11. [Supported Audio Sources](#11-supported-audio-sources)
@@ -283,7 +284,29 @@ pip install pyannote.audio omegaconf python-dotenv
 
 Speaker identities are **stable across audio chunks** — if the same person speaks again 2 minutes later, they get the same label. Speaker names are saved with the meeting and restored when reopening from the library.
 
-### 8.5 Startup with diarization enabled
+### 8.5 Tuning speaker detection accuracy
+
+Speaker recognition accuracy depends on four parameters that can be adjusted in your `.env` file (copy the commented lines from `.env.example` and uncomment them):
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `DIAR_MATCH_THRESHOLD` | `0.25` | Cosine similarity needed to match a voice to an existing speaker |
+| `DIAR_MERGE_THRESHOLD` | `0.70` | Similarity above which two speaker IDs are merged post-hoc |
+| `DIAR_MIN_SEGMENT_S` | `1.0` | Minimum turn length (seconds) used for embedding extraction |
+| `DIAR_CONTEXT_S` | `2.0` | Seconds of audio preroll carried across chunk boundaries |
+
+**Common problems and fixes:**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Same person appears as SPEAKER_2, SPEAKER_3… | Match threshold too strict | Lower `DIAR_MATCH_THRESHOLD` (e.g. `0.20`) |
+| Two different people merged into one | Match threshold too loose | Raise `DIAR_MATCH_THRESHOLD` (e.g. `0.35`) and/or raise `DIAR_MERGE_THRESHOLD` (e.g. `0.80`) |
+| Short interjections not labelled | `DIAR_MIN_SEGMENT_S` too high | Lower it to `0.5` |
+| Speaker changes missed at chunk boundary | Not enough cross-chunk context | Raise `DIAR_CONTEXT_S` (e.g. `3.0`) |
+
+> Changes take effect after restarting the server (`start.bat` / `start.sh`).
+
+### 8.6 Startup with diarization enabled
 
 On launch, the server loads the pyannote pipeline in a background thread (~30–60 seconds). You will see in the logs:
 
@@ -419,10 +442,18 @@ The `start.sh` script is the macOS equivalent of `start.bat`.
 - Make sure you accepted the terms of use for both pyannote models on HuggingFace (see [section 8.1](#81-prerequisites-all-free))
 - Diarization requires audio segments of at least 0.1s — very short utterances may not be labeled
 
-### Two speakers are detected as one (or vice versa)
+### Two different speakers are merged into one
 - This can happen with very similar voices or a noisy microphone
-- The cosine similarity threshold is set to `0.75` in `server.py` (`_match_or_create_speaker`); lower it slightly for more separation, raise it for stricter matching
+- Raise `DIAR_MATCH_THRESHOLD` in `.env` (e.g. `0.35`) to require higher similarity before matching
+- Raise `DIAR_MERGE_THRESHOLD` in `.env` (e.g. `0.80`) to make post-hoc merging stricter
 - Using a directional or noise-cancelling microphone improves accuracy significantly
+- See [section 8.5](#85-tuning-speaker-detection-accuracy) for the full tuning guide
+
+### The same speaker keeps appearing as multiple SPEAKER_ IDs
+- Short or noisy audio segments can produce unreliable voice embeddings
+- Lower `DIAR_MATCH_THRESHOLD` in `.env` (e.g. `0.20`) to make matching more permissive
+- Raise `DIAR_MIN_SEGMENT_S` in `.env` (e.g. `1.5`) to extract embeddings only from longer, cleaner turns
+- See [section 8.5](#85-tuning-speaker-detection-accuracy) for the full tuning guide
 
 ### `pip install pyannote.audio` fails
 - Make sure your virtual environment is activated

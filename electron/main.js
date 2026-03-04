@@ -24,7 +24,7 @@ function isServerRunning() {
     const req = http.get('http://127.0.0.1:8765/health', (res) => {
       resolve(res.statusCode === 200);
     });
-    req.setTimeout(1000, () => { req.destroy(); resolve(false); });
+    req.setTimeout(3000, () => { req.destroy(); resolve(false); });
     req.on('error', () => resolve(false));
   });
 }
@@ -443,6 +443,7 @@ ipcMain.handle('db:toggle-action-status', (_e, { actionId, status }) =>
 
 ipcMain.handle('db:save-company-analysis', (_e, { id, text }) => db.saveCompanyAnalysis(id, text));
 ipcMain.handle('db:get-company-analysis',  (_e, { id })       => db.getCompanyAnalysis(id));
+ipcMain.handle('db:save-email-recap',      (_e, { meetingId, text }) => db.saveEmailRecap(meetingId, text));
 
 // ─── IPC : audio:save ────────────────────────────────────────────────────────
 ipcMain.handle('audio:save', (_e, { meetingId, dataBase64 }) => {

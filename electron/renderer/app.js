@@ -1,11 +1,12 @@
 'use strict';
 
 // ─── Configuration ────────────────────────────────────────────────────────────
-const WS_URL        = 'ws://127.0.0.1:8765/ws/transcribe';
-const HEALTH_URL    = 'http://127.0.0.1:8765/health';
-const POLL_INTERVAL = 2000;
-const BUFFER_SIZE   = 4096;
-const VAD_THRESHOLD = 0.004;  // RMS below which the chunk is ignored (silence)
+const WS_URL             = 'ws://127.0.0.1:8765/ws/transcribe';
+const HEALTH_URL         = 'http://127.0.0.1:8765/health';
+const RETRANSCRIBE_URL   = 'http://127.0.0.1:8765/transcribe-full';
+const POLL_INTERVAL      = 2000;
+const BUFFER_SIZE        = 4096;
+const VAD_THRESHOLD      = 0.004;  // RMS below which the chunk is ignored (silence)
 
 // ─── LLM Prompts — French (used when lang = FR) ───────────────────────────────
 const SYSTEM_PROMPT_QUESTIONS = `Tu es un assistant d'analyse de réunion en temps réel.
@@ -31,35 +32,42 @@ On vient de détecter cette question lors d'une réunion professionnelle.
 Donne une réponse concise et pratique (2 à 4 phrases maximum).
 Réponds directement, sans reformuler la question, sans intro ni conclusion.`;
 
-const SYSTEM_PROMPT_ACTIONS = `Tu es un assistant d'analyse de réunion.
-Voici la transcription complète d'une réunion. Identifie TOUTES les actions à réaliser, y compris les engagements implicites et les tâches assignées à des personnes nommées.
+const SYSTEM_PROMPT_ACTIONS = `Tu es un assistant expert en analyse de réunion professionnelle.
+Voici la transcription COMPLÈTE d'une réunion. Identifie TOUTES les actions à réaliser — sois EXHAUSTIF.
 
 Détecte en particulier :
-- Les impératifs directs : "envoie X", "vérifie Y", "prépare Z"
-- Les obligations indirectes : "il faudra que tu...", "tu dois...", "il faut...", "n'oublie pas de...", "pense à..."
-- Les assignations à une personne : "[Prénom], tu t'occupes de...", "[Prénom] devra...", "il faudra que [Prénom]..."
-- Les engagements pris : "je vais faire...", "on va préparer...", "je m'en occupe"
+- Les impératifs directs : "envoie X", "vérifie Y", "prépare Z", "contacte..."
+- Les obligations indirectes : "il faudra que...", "tu dois...", "il faut...", "n'oublie pas de...", "pense à..."
+- Les assignations à une personne : "[Prénom/Titre], tu t'occupes de...", "[Prénom] devra...", "[Prénom] se charge de..."
+- Les engagements pris : "je vais faire...", "on va préparer...", "je m'en occupe", "nous allons..."
+- Les décisions actionnables : "on se réunit dans X jours", "on va définir...", "il faudra valider..."
+- Les accords conclus qui impliquent un suivi concret
 
-Quand une personne est nommée pour une tâche, inclus son prénom dans l'action.
+Quand une personne est nommée pour une tâche, inclus son nom ou titre dans l'action.
 
 RÈGLES ABSOLUES DE FORMAT :
 - Une ligne par action, préfixe obligatoire "ACTION: ".
+- Formule chaque action de façon concrète et claire.
 - Pas de titre, pas de numérotation, pas de tableau, pas de markdown, pas d'explication.
-- Si aucune action à faire : répondre uniquement RIEN.
+- Si vraiment aucune action dans la transcription : répondre uniquement RIEN.
 
 Exemples valides :
-ACTION: Pierre — Envoyer le compte rendu à la fin de la réunion.
-ACTION: Envoyer un email au transporteur pour confirmer la livraison demain à 14h.
-ACTION: Vérifier les niveaux de stock avant la livraison.
+ACTION: Madame Jeanne — Préparer une proposition détaillée sur les menus et les tarifs.
+ACTION: Organiser une réunion de suivi dans 10 jours pour donner la réponse finale.
+ACTION: Établir le contrat de location des locaux avec l'entreprise Au Café.
+ACTION: Valider le montant du loyer mensuel proposé par l'entreprise Au Café.
 
 Exemple si rien :
 RIEN`;
 
-const SYSTEM_PROMPT_SUMMARY = `Tu es un assistant de synthèse de réunion.
-Voici la transcription complète, les questions/réponses et les actions déjà détectées.
-Produis une synthèse en JSON strict (sans markdown) :
-{"summary":"résumé en 3-5 phrases","next_steps":"liste complète des actions et décisions — relis la transcription pour inclure toute action qui aurait pu être manquée (obligations, assignations nominatives, engagements pris)"}
-Réponds UNIQUEMENT avec le JSON.`;
+const SYSTEM_PROMPT_SUMMARY = `Tu es un assistant expert en analyse et synthèse de réunion professionnelle.
+Voici la transcription complète de la réunion, les questions/réponses détectées et les actions identifiées.
+
+Produis une synthèse RICHE et COMPLÈTE en JSON strict (sans markdown, sans balise, sans backtick) :
+{"summary":"Résumé substantiel en 6 à 10 phrases couvrant : le contexte et l'objectif de la réunion, les principaux sujets abordés, les arguments et positions de chaque partie, les points de tension ou désaccords, les accords trouvés et la décision finale ou prochaine étape.","next_steps":"Liste numérotée de TOUTES les actions et décisions concrètes issues de la réunion — relis attentivement la transcription pour ne rien manquer : obligations, engagements nominatifs, délais mentionnés, décisions à valider."}
+
+IMPORTANT : Le summary doit être substantiel et refléter fidèlement la richesse des échanges.
+Réponds UNIQUEMENT avec le JSON valide.`;
 
 // ─── Prompts EN ───────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT_QUESTIONS_EN = `You are a real-time meeting analysis assistant.
@@ -85,35 +93,42 @@ A question has just been detected during a professional meeting.
 Give a concise and practical answer (2 to 4 sentences maximum).
 Reply directly, without rephrasing the question, without intro or conclusion.`;
 
-const SYSTEM_PROMPT_ACTIONS_EN = `You are a meeting analysis assistant.
-Here is the complete transcript of a meeting. Identify ALL actions to be taken, including implicit commitments and tasks assigned to named individuals.
+const SYSTEM_PROMPT_ACTIONS_EN = `You are an expert meeting analysis assistant.
+Here is the COMPLETE transcript of a meeting. Identify ALL actions to be taken — be EXHAUSTIVE.
 
 Detect in particular:
-- Direct imperatives: "send X", "check Y", "prepare Z"
-- Indirect obligations: "you'll need to...", "you should...", "don't forget to...", "make sure to...", "you have to..."
-- Assignments to a person: "[Name], you handle...", "[Name] will need to...", "[Name] should..."
-- Commitments made: "I'll do...", "we'll prepare...", "I'll take care of it"
+- Direct imperatives: "send X", "check Y", "prepare Z", "contact..."
+- Indirect obligations: "you'll need to...", "you should...", "don't forget to...", "make sure to...", "we need to..."
+- Assignments to a person: "[Name/Title], you handle...", "[Name] will...", "[Name] is responsible for..."
+- Commitments made: "I'll do...", "we'll prepare...", "I'll take care of it", "we're going to..."
+- Actionable decisions: "we'll meet in X days", "we'll define...", "we need to validate..."
+- Concluded agreements that imply concrete follow-up
 
-When a person is named for a task, include their name in the action.
+When a person is named for a task, include their name or title in the action.
 
 ABSOLUTE FORMAT RULES:
 - One line per action, mandatory prefix "ACTION: ".
+- Phrase each action concretely and clearly.
 - No title, no numbering, no table, no markdown, no explanation.
-- If no action to take: reply only NOTHING.
+- If truly no action in the transcript: reply only NOTHING.
 
 Valid examples:
-ACTION: Pierre — Send the meeting notes at the end of the meeting.
-ACTION: Send an email to the carrier to confirm delivery tomorrow at 2pm.
-ACTION: Check stock levels before delivery.
+ACTION: Ms. Jeanne — Prepare a detailed proposal on menus and pricing.
+ACTION: Schedule a follow-up meeting in 10 days to give the final answer.
+ACTION: Draft the premises rental agreement with Au Café company.
+ACTION: Validate the monthly rent amount proposed by Au Café.
 
 Example if nothing:
 NOTHING`;
 
-const SYSTEM_PROMPT_SUMMARY_EN = `You are a meeting summary assistant.
-Here is the full transcript, the questions/answers and already detected actions.
-Produce a summary in strict JSON (no markdown):
-{"summary":"summary in 3-5 sentences","next_steps":"complete list of all actions and decisions — re-read the transcript to include any action that may have been missed (obligations, named assignments, commitments made)"}
-Reply ONLY with the JSON.`;
+const SYSTEM_PROMPT_SUMMARY_EN = `You are an expert professional meeting analysis and summary assistant.
+Here is the full transcript, detected questions/answers and identified actions.
+
+Produce a RICH and COMPLETE summary in strict JSON (no markdown, no backtick, no code block):
+{"summary":"Substantial summary in 6 to 10 sentences covering: the context and objective of the meeting, the main topics discussed, arguments and positions from each party, points of tension or disagreement, agreements reached and the final decision or next milestone.","next_steps":"Numbered list of ALL concrete actions and decisions from the meeting — carefully re-read the transcript to miss nothing: obligations, named commitments, deadlines mentioned, decisions to validate."}
+
+IMPORTANT: The summary must be substantial and faithfully reflect the richness of the exchanges.
+Reply ONLY with valid JSON.`;
 
 // ─── Key-points prompts (real-time incremental, FR + EN) ──────────────────────
 const SYSTEM_PROMPT_KEYPOINTS = `Tu es un assistant de réunion local, spécialisé en synthèse fiable et extraction d'éléments actionnables.
@@ -159,6 +174,171 @@ POINT: Risk identified — supplier delay could push back delivery.
 
 Example if nothing:
 NOTHING`;
+
+// ─── Prompt final unifié — UN seul appel LLM pour toute l'analyse de fin de réunion ─────────────────
+
+const SYSTEM_PROMPT_FINAL_ANALYSIS = `Tu es un assistant expert en analyse de réunion professionnelle.
+Voici la transcription COMPLÈTE d'une réunion. Analyse-la intégralement et produis un rapport complet en JSON valide strict (sans markdown, sans backtick, sans commentaire, sans texte avant ou après) :
+
+{
+  "key_points": [
+    "Décision, fait important, chiffre, engagement ou risque clé 1",
+    "..."
+  ],
+  "questions": [
+    {
+      "text": "Question posée lors de la réunion ?",
+      "answer": "Réponse concise et pratique basée sur les échanges (2 à 4 phrases)."
+    }
+  ],
+  "actions": [
+    "Responsable — Description concrète de l'action",
+    "Description d'une action sans responsable identifié"
+  ],
+  "discovery_questions": [
+    "Question ouverte à poser lors du prochain échange pour approfondir un sujet effleuré ou clarifier un enjeu non résolu ?",
+    "..."
+  ],
+  "summary": "## Synthèse globale\n\n**Contexte** : [participants, enjeux, objectif de la réunion]\n\n**Points abordés** : [sujets traités, arguments de chaque partie]\n\n**État actuel** : [accords, désaccords, réserves exprimées]\n\n## Actions réalisées ✓\n\n1. **[Responsable]** — [description action accomplie]\n2. ...\n\n## Actions en attente ⏳\n\n1. **[Responsable]** — [description] — Échéance : [date si mentionnée]\n2. ...\n\n## Points de vigilance ⚠\n\n1. **[Risque ou tension]** : [description et impact potentiel]\n2. ...\n\n## Recommandations & prochaines étapes\n\n1. [Recommandation concrète et actionnable]\n2. ..."
+}
+
+RÈGLES :
+- key_points : sois EXHAUSTIF — décisions, faits, chiffres, dates, engagements, risques, opportunités, tensions, accords.
+- questions : extrais TOUTES les questions (directes, indirectes, rhétoriques). Génère une réponse contextuelle pour chacune à partir de la transcription.
+- actions : TOUTES les obligations, engagements, décisions actionnables, tâches assignées — inclure le nom ou titre quand une personne est désignée.
+- discovery_questions : identifie les zones d'ombre, les sujets effleurés et les enjeux non approfondis. Génère 3 à 7 questions ouvertes percutantes à poser lors du prochain échange pour continuer la découverte et enrichir le contexte. Ne pas reprendre les questions déjà posées dans la réunion.
+- summary : rapport structuré complet. Chaque section doit être substantielle. Utilise uniquement des listes numérotées ou à puces, PAS de tableaux markdown.
+- Réponds UNIQUEMENT avec le JSON valide. Zéro texte avant ou après.`;
+
+const SYSTEM_PROMPT_FINAL_ANALYSIS_EN = `You are an expert professional meeting analysis assistant.
+Here is the COMPLETE transcript of a meeting. Analyze it fully and produce a comprehensive report in strict valid JSON (no markdown, no backtick, no comment, no text before or after):
+
+{
+  "key_points": [
+    "Key decision, important fact, figure, commitment or risk 1",
+    "..."
+  ],
+  "questions": [
+    {
+      "text": "Question asked during the meeting?",
+      "answer": "Concise and practical answer based on the exchanges (2 to 4 sentences)."
+    }
+  ],
+  "actions": [
+    "Responsible — Concrete description of the action",
+    "Description of an action without an identified owner"
+  ],
+  "discovery_questions": [
+    "Open-ended question to ask at the next meeting to dig deeper into a topic that was touched upon or clarify an unresolved issue?",
+    "..."
+  ],
+  "summary": "## Global Summary\n\n**Context**: [participants, stakes, meeting objective]\n\n**Topics covered**: [subjects discussed, each party's arguments]\n\n**Current status**: [agreements, disagreements, expressed reservations]\n\n## Completed Actions ✓\n\n1. **[Owner]** — [description of completed action]\n2. ...\n\n## Pending Actions ⏳\n\n1. **[Owner]** — [description] — Due: [date if mentioned]\n2. ...\n\n## Watch Points ⚠\n\n1. **[Risk or tension]**: [description and potential impact]\n2. ...\n\n## Recommendations & Next Steps\n\n1. [Concrete, actionable recommendation]\n2. ..."
+}
+
+RULES:
+- key_points: be EXHAUSTIVE — decisions, facts, figures, dates, commitments, risks, opportunities, tensions, agreements.
+- questions: extract ALL questions (direct, indirect, rhetorical). Generate a contextual answer for each one based on the transcript.
+- actions: ALL obligations, commitments, actionable decisions, assigned tasks — include name or title when a person is designated.
+- discovery_questions: identify blind spots, topics briefly touched upon, and unresolved stakes. Generate 3 to 7 sharp open-ended questions to ask at the next meeting to continue discovery and enrich context. Do not repeat questions already asked during this meeting.
+- summary: complete structured report. Each section must be substantial. Use only numbered or bullet lists, NO markdown tables.
+- Reply ONLY with valid JSON. Zero text before or after.`;
+
+// ─── Prompts finaux dédiés — transcription COMPLÈTE (distincts des prompts incrémentaux temps-réel) ───
+
+const SYSTEM_PROMPT_FINAL_KEYPOINTS = `Tu es un assistant expert en analyse de réunion professionnelle.
+Voici la transcription COMPLÈTE d'une réunion. Extrais TOUS les points clés importants.
+
+Inclure sans exception :
+- Décisions prises (même provisoires)
+- Faits et chiffres cités (pourcentages, montants, délais, statistiques)
+- Engagements pris par chaque partie
+- Points de tension, objections ou désaccords
+- Opportunités ou bénéfices identifiés
+- Risques ou contraintes mentionnés
+- Accords conclus et conditions associées
+
+RÈGLES ABSOLUES DE FORMAT :
+- Une ligne par point clé, préfixe obligatoire "POINT: ".
+- Sois exhaustif — liste tous les éléments factuels pertinents, même brièvement mentionnés.
+- Pas de titre, pas de numérotation, pas de tableau, pas de markdown, pas d'explication.
+- Ne jamais inventer d'information absente de la transcription.
+- Si aucun point clé : répondre uniquement RIEN.
+
+Exemples valides :
+POINT: Décision d'organiser une réunion de suivi dans 10 jours pour donner la réponse finale.
+POINT: 60% des salariés se sentent exploités, 65% ont perdu confiance en l'entreprise.
+POINT: L'entreprise Au Café propose de gérer l'équipement, les machines et le recrutement.
+POINT: Condition posée : définir les menus, les tarifs et le montant du loyer.
+POINT: Plusieurs études démontrent que la valorisation du personnel améliore le rendement.`;
+
+const SYSTEM_PROMPT_FINAL_QUESTIONS = `Tu es un assistant expert en analyse de réunion professionnelle.
+Voici la transcription COMPLÈTE d'une réunion. Extrais TOUTES les questions posées par les participants.
+
+Inclure :
+- Les questions directes (avec "?" explicite)
+- Les questions indirectes ("je me demande si...", "on devrait vérifier si...", "il faudrait savoir...")
+- Les interrogations rhétoriques révélant un doute ou une objection
+- Les sujets ouverts pour lesquels une réponse a été demandée ou attendue
+
+Reformule chaque question sous forme directe et claire si nécessaire.
+
+RÈGLES ABSOLUES DE FORMAT :
+- Une ligne par question, préfixe obligatoire "QUESTION: ".
+- Pas de titre, pas de numérotation, pas de tableau, pas de markdown, pas d'explication.
+- Si aucune question dans la transcription : répondre uniquement RIEN.
+
+Exemples valides :
+QUESTION: Que gagne l'entreprise en investissant dans ce projet de cafétéria ?
+QUESTION: Pourquoi partager les locaux plutôt qu'ouvrir un espace détente interne ?
+QUESTION: Les capacités financières sont-elles suffisantes pour ce projet ?
+QUESTION: Avons-nous fait le bon choix en sollicitant une entreprise extérieure ?`;
+
+const SYSTEM_PROMPT_FINAL_KEYPOINTS_EN = `You are an expert professional meeting analysis assistant.
+Here is the COMPLETE transcript of a meeting. Extract ALL important key points.
+
+Include without exception:
+- Decisions made (even provisional ones)
+- Facts and figures cited (percentages, amounts, deadlines, statistics)
+- Commitments made by each party
+- Points of tension, objections or disagreements
+- Opportunities or benefits identified
+- Risks or constraints mentioned
+- Agreements reached and associated conditions
+
+ABSOLUTE FORMAT RULES:
+- One line per key point, mandatory prefix "POINT:".
+- Be exhaustive — list all relevant factual elements, even briefly mentioned ones.
+- No title, no numbering, no table, no markdown, no explanation.
+- Never invent information absent from the transcript.
+- If no key points: reply only NOTHING.
+
+Valid examples:
+POINT: Decision to hold a follow-up meeting in 10 days to give the final answer.
+POINT: 60% of employees feel exploited, 65% have lost confidence in the company.
+POINT: Au Café company offers to manage equipment, machines, and recruitment.
+POINT: Condition set: define menus, prices, and rent amount before final decision.`;
+
+const SYSTEM_PROMPT_FINAL_QUESTIONS_EN = `You are an expert professional meeting analysis assistant.
+Here is the COMPLETE transcript of a meeting. Extract ALL questions asked by participants.
+
+Include:
+- Direct questions (with explicit "?")
+- Indirect questions ("I wonder if...", "we should check if...", "we need to know...")
+- Rhetorical questions revealing doubt or objection
+- Open topics for which an answer was requested or expected
+
+Rephrase each question in a direct and clear form if necessary.
+
+ABSOLUTE FORMAT RULES:
+- One line per question, mandatory prefix "QUESTION:".
+- No title, no numbering, no table, no markdown, no explanation.
+- If no questions in the transcript: reply only NOTHING.
+
+Valid examples:
+QUESTION: What does the company gain by investing in the cafeteria project?
+QUESTION: Why share premises rather than open an internal relaxation space?
+QUESTION: Are the financial resources sufficient for this project?
+QUESTION: Did we make the right choice by involving an external company?`;
 
 // ─── Discovery prompts (questions ouvertes pour approfondir la découverte, FR + EN) ──
 const SYSTEM_PROMPT_DISCOVERY = `Tu es un coach commercial expert en phase de découverte client.
@@ -220,12 +400,17 @@ Example if nothing interesting:
 NOTHING`;
 
 // ─── Prompt getters (dynamic by language) ────────────────────────────────────
-function promptQuestions() { return language === 'fr' ? SYSTEM_PROMPT_QUESTIONS : SYSTEM_PROMPT_QUESTIONS_EN; }
-function promptAnswer()    { return language === 'fr' ? SYSTEM_PROMPT_ANSWER    : SYSTEM_PROMPT_ANSWER_EN; }
-function promptActions()   { return language === 'fr' ? SYSTEM_PROMPT_ACTIONS   : SYSTEM_PROMPT_ACTIONS_EN; }
-function promptSummary()   { return language === 'fr' ? SYSTEM_PROMPT_SUMMARY   : SYSTEM_PROMPT_SUMMARY_EN; }
-function promptKeyPoints() { return language === 'fr' ? SYSTEM_PROMPT_KEYPOINTS : SYSTEM_PROMPT_KEYPOINTS_EN; }
-function promptDiscovery() { return language === 'fr' ? SYSTEM_PROMPT_DISCOVERY : SYSTEM_PROMPT_DISCOVERY_EN; }
+function promptQuestions()       { return language === 'fr' ? SYSTEM_PROMPT_QUESTIONS        : SYSTEM_PROMPT_QUESTIONS_EN; }
+function promptAnswer()          { return language === 'fr' ? SYSTEM_PROMPT_ANSWER           : SYSTEM_PROMPT_ANSWER_EN; }
+function promptActions()         { return language === 'fr' ? SYSTEM_PROMPT_ACTIONS          : SYSTEM_PROMPT_ACTIONS_EN; }
+function promptSummary()         { return language === 'fr' ? SYSTEM_PROMPT_SUMMARY          : SYSTEM_PROMPT_SUMMARY_EN; }
+function promptKeyPoints()       { return language === 'fr' ? SYSTEM_PROMPT_KEYPOINTS        : SYSTEM_PROMPT_KEYPOINTS_EN; }
+function promptDiscovery()       { return language === 'fr' ? SYSTEM_PROMPT_DISCOVERY        : SYSTEM_PROMPT_DISCOVERY_EN; }
+// Prompt unique pour toute l'analyse finale (un seul appel LLM, JSON complet)
+function promptFinalAnalysis()   { return language === 'fr' ? SYSTEM_PROMPT_FINAL_ANALYSIS   : SYSTEM_PROMPT_FINAL_ANALYSIS_EN; }
+// Prompts dédiés à l'analyse finale (transcription complète — distincts des prompts temps-réel incrémentaux)
+function promptFinalKeyPoints()  { return language === 'fr' ? SYSTEM_PROMPT_FINAL_KEYPOINTS  : SYSTEM_PROMPT_FINAL_KEYPOINTS_EN; }
+function promptFinalQuestions()  { return language === 'fr' ? SYSTEM_PROMPT_FINAL_QUESTIONS  : SYSTEM_PROMPT_FINAL_QUESTIONS_EN; }
 
 // ─── Global state ─────────────────────────────────────────────────────────────
 let ws          = null;
@@ -287,12 +472,15 @@ let currentMeetingId    = null;
 let currentCompanyName  = '';
 let currentMeetingTitle = '';
 let currentNumSpeakers  = 2;
-let mediaRecorder       = null;
-let audioChunks         = [];
-let recordingStartTime  = null;
-let savedAudioPath      = '';
-let summaryText         = '';
-let nextStepsText       = '';
+let mediaRecorder          = null;
+let audioChunks            = [];
+let allPcmChunks           = [];   // all raw Float32 chunks — for post-recording re-transcription
+let retranscribeAbortCtrl  = null; // AbortController for /transcribe-full fetch
+let isRetranscribing       = false;
+let recordingStartTime     = null;
+let savedAudioPath         = '';
+let summaryText            = '';
+let nextStepsText          = '';
 
 // Normalize next_steps: LLM may return a string or an array of objects/strings
 function normalizeNextSteps(val) {
@@ -399,6 +587,11 @@ function handleTranscript(msg) {
     setDot(dotMic, 'red');
     btnCsv.disabled = allSentences.length === 0;
     btnSrt.disabled = allSentences.length === 0;
+
+    // If re-transcription is in progress, skip WS-based analysis —
+    // retranscribeAndAnalyze() will call finalAnalysis + autoSave itself.
+    if (isRetranscribing) return;
+
     const speakerText = buildSpeakerText(allSentences) || msg.fullText || '';
 
     (async () => {
@@ -409,12 +602,10 @@ function handleTranscript(msg) {
       // Attendre la fin des appels LLM déjà en cours (le courant, pas les queued)
       await waitForQueues();
 
-      // Analyse complète de la transcription — résultats définitifs
+      // Analyse complète de la transcription — UN seul appel LLM (KP + questions + actions + summary)
       await finalAnalysis(speakerText);
 
       if (currentMeetingId !== null) {
-        try { await generateSummary(speakerText); }
-        catch (e) { console.error('[final] generateSummary:', e); }
         await autoSave();
       }
     })();
@@ -800,65 +991,7 @@ function waitForQueues(timeoutMs = 120000) {
 
 // ─── Analyse finale — transcription complète (écrase les résultats temps-réel) ─
 
-async function finalExtractKeyPoints(fullText) {
-  // Réinitialiser avant de remplir avec les résultats définitifs
-  keyPoints = [];
-  renderKeyPoints();
-  try {
-    const url      = urlInput.value.trim();
-    const messages = [
-      { role: 'system', content: promptKeyPoints() },
-      { role: 'user',   content: fullText },
-    ];
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, max_tokens: 600, stream: true }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('POINT:')) {
-        const text = line.slice(6).trim();
-        if (text && !keyPoints.includes(text)) { keyPoints.push(text); renderKeyPoints(); }
-      }
-    });
-  } catch (e) {
-    console.error('[final-kp]', e);
-  }
-}
-
-async function finalExtractQuestions(fullText) {
-  // Réinitialiser avant de remplir avec les résultats définitifs
-  questions   = [];
-  llmQueueAns = [];
-  renderQuestions();
-  try {
-    const url      = urlInput.value.trim();
-    const messages = [
-      { role: 'system', content: promptQuestions() },
-      { role: 'user',   content: fullText },
-    ];
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, max_tokens: 400, stream: true }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('QUESTION:')) {
-        const text = line.slice(9).trim();
-        if (text && !questions.find(q => q.text === text)) {
-          questions.push({ text, answer: null, answering: false });
-          renderQuestions();
-        }
-      }
-    });
-  } catch (e) {
-    console.error('[final-q]', e);
-  }
-}
-
-// Orchestrateur : KP + questions + réponses + actions sur transcription complète
+// ─── Analyse finale — UN seul appel LLM, transcription complète → JSON structuré ─────────────────────
 async function finalAnalysis(fullText) {
   if (!fullText.trim()) return;
 
@@ -873,152 +1006,202 @@ async function finalAnalysis(fullText) {
     return;
   }
 
-  // 1. Points clés — transcription complète (one-shot)
-  await finalExtractKeyPoints(fullText);
-
-  // 2. Questions — transcription complète (one-shot)
-  await finalExtractQuestions(fullText);
-
-  // 3. Générer les réponses pour toutes les questions détectées
-  questions.forEach(q => { q.answering = true; llmQueueAns.push(q); });
-  if (llmQueueAns.length > 0) processAnswerQueue();
-
-  // 4. Actions — réinitialiser + transcription complète
-  actions = [];
-  renderActions();
-  try { await detectActions(fullText); }
-  catch (e) { console.error('[final] detectActions:', e); }
-
-  // 5. Attendre que toutes les réponses aux questions soient terminées
-  await waitForQueues();
-}
-
-// ─── LLM — Action detection (end of meeting) ──────────────────────────────────
-async function detectActions(fullText) {
-  if (!fullText.trim()) return;
-
-  actionsList.innerHTML = '<div class="detecting">Analyzing actions…</div>';
-
-  // Vérifier la disponibilité de LMStudio — un retry après 4 s si indisponible
-  await checkLmStudio();
-  if (!llmConnected) {
-    await new Promise(r => setTimeout(r, 4000));
-    await checkLmStudio();
-  }
-  if (!llmConnected) {
-    actionsList.innerHTML = '<div class="detecting muted">LMStudio unavailable</div>';
-    return;
+  // Tronquer le transcript pour ne pas dépasser la fenêtre de contexte du LLM.
+  // On garde le début (contexte/agenda) et la fin (conclusions/actions).
+  const MAX_TRANSCRIPT_CHARS = 10000;
+  let inputText = fullText;
+  if (inputText.length > MAX_TRANSCRIPT_CHARS) {
+    const half = MAX_TRANSCRIPT_CHARS / 2;
+    inputText = inputText.slice(0, half)
+      + '\n\n[...TRANSCRIPTION TRONQUÉE — MILIEU OMIS POUR RAISON DE CONTEXTE...]\n\n'
+      + inputText.slice(-half);
+    console.warn(`[finalAnalysis] Transcript tronqué : ${fullText.length} → ~${MAX_TRANSCRIPT_CHARS} chars`);
   }
 
+  // Sauvegarder l'analyse temps-réel comme fallback avant de réinitialiser
+  const prevKeyPoints = [...keyPoints];
+  const prevQuestions = questions.map(q => ({ ...q }));
+  const prevActions   = [...actions];
+  const prevSummary   = summaryText;
+  const prevNextSteps = nextStepsText;
+
+  // Réinitialiser toutes les sections + afficher indicateur de génération
+  keyPoints = []; renderKeyPoints();
+  questions = []; llmQueueAns = []; renderQuestions();
+  actions   = []; renderActions();
+  actionsList.innerHTML = `<div class="detecting">${language === 'fr' ? 'Analyse finale en cours…' : 'Running final analysis…'}</div>`;
+
+  const card    = document.getElementById('summary-card');
+  const content = document.getElementById('summary-content');
+  if (card && content) {
+    card.classList.remove('hidden');
+    content.innerHTML = `<div class="summary-generating">${language === 'fr' ? 'Génération en cours…' : 'Generating…'}</div>`;
+  }
+
+  let finishReason = '';
   try {
     const url      = urlInput.value.trim();
     const messages = [
-      { role: 'system', content: promptActions() },
-      { role: 'user',   content: fullText },
+      { role: 'system', content: promptFinalAnalysis() },
+      { role: 'user',   content: inputText },
     ];
 
     const resp = await fetch(url + '/chat/completions', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages,
-        temperature: 0.1, max_tokens: 512, stream: true,
-      }),
+      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, stream: false, max_tokens: 4096 }),
     });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('ACTION:')) {
-        const text = line.slice(7).trim();
-        if (text && !actions.includes(text)) {
-          actions.push(text);
-          renderActions();
-        }
-      }
-    });
-
-    if (actions.length === 0) {
-      actionsList.innerHTML = '<div class="detecting muted">No actions detected</div>';
+    const j   = await resp.json();
+    const raw = j.choices?.[0]?.message?.content ?? '';
+    finishReason      = j.choices?.[0]?.finish_reason ?? '';
+    if (finishReason === 'length') {
+      console.warn('[finalAnalysis] finish_reason=length — réponse tronquée par le modèle (contexte trop court)');
     }
+
+    // Extraire le JSON — plusieurs stratégies par ordre de fiabilité
+    let parsed = null;
+
+    // 1. Parse direct (modèle bien cadré qui renvoie JSON pur)
+    try { parsed = JSON.parse(raw); } catch (_) {}
+
+    // 2. Bloc markdown ```json ... ```
+    if (!parsed) {
+      const mdMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (mdMatch) try { parsed = JSON.parse(mdMatch[1]); } catch (_) {}
+    }
+
+    // 3. Extraction greedy : du premier { jusqu'au dernier } (JSON complet)
+    if (!parsed) {
+      const m = raw.match(/\{[\s\S]*\}/);
+      if (m) try { parsed = JSON.parse(m[0]); } catch (_) {}
+    }
+
+    // 4. Modèles reasoning : le dernier bloc JSON valide dans la réponse
+    if (!parsed) {
+      const allMatches = [...raw.matchAll(/\{[\s\S]*?\}/gs)];
+      for (let i = allMatches.length - 1; i >= 0; i--) {
+        try { parsed = JSON.parse(allMatches[i][0]); break; } catch (_) {}
+      }
+    }
+
+    // 5. Réparation JSON tronqué : fermer les accolades/crochets ouverts
+    if (!parsed) {
+      const start = raw.indexOf('{');
+      if (start !== -1) {
+        let fragment = raw.slice(start);
+        // Supprimer une éventuelle virgule finale avant de fermer
+        fragment = fragment.replace(/,\s*$/, '');
+        // Compter les niveaux ouverts non fermés
+        let depth = 0; let inStr = false; let esc = false;
+        for (const ch of fragment) {
+          if (esc)            { esc = false; continue; }
+          if (ch === '\\' && inStr) { esc = true; continue; }
+          if (ch === '"')    { inStr = !inStr; continue; }
+          if (inStr)         continue;
+          if (ch === '{' || ch === '[') depth++;
+          else if (ch === '}' || ch === ']') depth--;
+        }
+        if (inStr)   fragment += '"';   // fermer la chaîne ouverte
+        if (depth > 0) fragment += '}'.repeat(depth);
+        try { parsed = JSON.parse(fragment); } catch (_) {}
+      }
+    }
+
+    if (!parsed) {
+      console.error('[finalAnalysis] Réponse LLM brute (500 premiers chars) :', raw.slice(0, 500));
+      throw new Error('Aucun JSON valide dans la réponse LLM');
+    }
+
+    // Points clés
+    keyPoints = (parsed.key_points || []).filter(s => typeof s === 'string' && s.trim());
+    renderKeyPoints();
+
+    // Questions avec réponses déjà générées dans le même appel
+    questions = (parsed.questions || []).map(q => ({
+      text:      typeof q === 'string' ? q.trim()     : (q.text   || '').trim(),
+      answer:    typeof q === 'string' ? null          : (q.answer || null),
+      answering: false,
+    })).filter(q => q.text);
+    renderQuestions();
+
+    // Actions
+    actions = (parsed.actions || []).filter(s => typeof s === 'string' && s.trim());
+    renderActions();
+    if (actions.length === 0) {
+      actionsList.innerHTML = `<div class="detecting muted">${language === 'fr' ? 'Aucune action détectée' : 'No actions detected'}</div>`;
+    }
+
+    // Questions de découverte (pour le prochain échange)
+    if (parsed.discovery_questions && parsed.discovery_questions.length) {
+      discoveryQuestions = parsed.discovery_questions.filter(s => typeof s === 'string' && s.trim());
+      renderDiscovery();
+    }
+
+    // Résumé (rapport structuré complet) — next_steps désormais intégré dans summary
+    summaryText   = parsed.summary || '';
+    nextStepsText = '';   // déprécié : tout est dans summaryText
+    renderSummary();
+
   } catch (e) {
-    console.error('[llm-actions]', e);
-    actionsList.innerHTML = '<div class="detecting muted">Analysis error</div>';
+    console.error('[finalAnalysis]', e);
+
+    // Restaurer l'analyse temps-réel comme fallback pour que autoSave() sauvegarde quelque chose
+    if (prevKeyPoints.length) { keyPoints = prevKeyPoints; renderKeyPoints(); }
+    if (prevQuestions.length) { questions = prevQuestions; renderQuestions(); }
+    if (prevActions.length)   { actions   = prevActions;   renderActions(); }
+    if (prevSummary)          { summaryText   = prevSummary; }
+    if (prevNextSteps)        { nextStepsText = prevNextSteps; }
+    renderSummary();
+
+    const hint = finishReason === 'length'
+      ? (language === 'fr' ? ' (contexte LLM trop court — réponse tronquée)' : ' (LLM context too short — response truncated)')
+      : '';
+    actionsList.innerHTML = `<div class="detecting muted">Analysis error: ${e.message}${hint}</div>`;
+    showNotification('⚠ Analyse finale échouée — données temps-réel conservées');
   }
 }
+
+// ─── Rich summary markdown renderer (partagé avec library.js) ─────────────────
+function _inlineHtml(text) {
+  // Échapper d'abord, puis appliquer les transformations inline
+  let s = escHtml(text);
+  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');    // **gras**
+  s = s.replace(/\*(.*?)\*/g,     '<em>$1</em>');            // *italique*
+  return s;
+}
+
+window.formatRichSummary = function formatRichSummary(text) {
+  if (!text || !text.trim()) return '';
+  const lines = text.split('\n');
+  const out   = [];
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) continue;
+    if (/^## /.test(line)) {
+      out.push(`<h3 class="sr-section">${_inlineHtml(line.slice(3).trim())}</h3>`);
+    } else if (/^### /.test(line)) {
+      out.push(`<h4 class="sr-subsection">${_inlineHtml(line.slice(4).trim())}</h4>`);
+    } else if (/^\d+\.\s/.test(line)) {
+      out.push(`<div class="sr-item sr-numbered">${_inlineHtml(line.replace(/^\d+\.\s+/, ''))}</div>`);
+    } else if (/^[-•]\s/.test(line)) {
+      out.push(`<div class="sr-item sr-bullet">${_inlineHtml(line.replace(/^[-•]\s+/, ''))}</div>`);
+    } else {
+      out.push(`<p class="sr-para">${_inlineHtml(line)}</p>`);
+    }
+  }
+  return out.join('');
+};
 
 // ─── Summary rendering ────────────────────────────────────────────────────────
 function renderSummary() {
   const card    = document.getElementById('summary-card');
   const content = document.getElementById('summary-content');
   if (!card || !content) return;
-  if (!summaryText && !nextStepsText) { card.classList.add('hidden'); return; }
+  if (!summaryText) { card.classList.add('hidden'); return; }
   card.classList.remove('hidden');
-  content.innerHTML = `
-    ${summaryText
-      ? `<div class="summary-text">${escHtml(summaryText)}</div>`
-      : ''}
-    ${nextStepsText
-      ? `<div class="summary-next-steps-label">Next steps</div>
-         <div class="summary-next-steps">${escHtml(nextStepsText)}</div>`
-      : ''}
-  `;
-}
-
-// ─── LLM — Summary generation (end of meeting, one-shot) ─────────────────────
-async function generateSummary(fullText) {
-  if (!fullText.trim()) return;
-  await checkLmStudio();
-  if (!llmConnected) return;
-
-  // Show generating state immediately
-  const card    = document.getElementById('summary-card');
-  const content = document.getElementById('summary-content');
-  if (card && content) {
-    card.classList.remove('hidden');
-    content.innerHTML = '<div class="summary-generating">Generating summary…</div>';
-  }
-
-  const qSummary = questions.map((q, i) =>
-    `Q${i + 1}: ${q.text}\nA: ${q.answer || '(no answer)'}`
-  ).join('\n');
-  const aSummary = actions.map((a, i) => `${i + 1}. ${a}`).join('\n');
-
-  const userContent = [
-    'TRANSCRIPTION:\n' + fullText,
-    qSummary ? 'QUESTIONS/ANSWERS:\n' + qSummary : '',
-    aSummary ? 'ACTIONS:\n' + aSummary : '',
-  ].filter(Boolean).join('\n\n');
-
-  const url      = urlInput.value.trim();
-  const messages = [
-    { role: 'system', content: promptSummary() },
-    { role: 'user',   content: userContent },
-  ];
-
-  try {
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages,
-        temperature: 0.2, max_tokens: 512, stream: false,
-      }),
-    });
-    if (!resp.ok) { renderSummary(); return; }
-
-    const j   = await resp.json();
-    const raw = j.choices?.[0]?.message?.content ?? '';
-    // Extract raw JSON (in case the model wraps it with extra text)
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed  = JSON.parse(match[0]);
-      summaryText   = parsed.summary   || '';
-      nextStepsText = normalizeNextSteps(parsed.next_steps);
-    }
-  } catch (e) {
-    console.error('[llm-summary]', e);
-  }
-  renderSummary();
+  content.innerHTML = `<div class="summary-rich">${formatRichSummary(summaryText)}</div>`;
 }
 
 // ─── Auto-save to DB ──────────────────────────────────────────────────────────
@@ -1357,6 +1540,9 @@ async function startRecording() {
   processor.onaudioprocess = (evt) => {
     if (!recording) return;
     const data = evt.inputBuffer.getChannelData(0);
+    // Accumulate ALL audio for post-recording re-transcription (no VAD filter here)
+    allPcmChunks.push(new Float32Array(data));
+    // Apply VAD before sending to real-time WebSocket stream
     let sum = 0;
     for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
     const rms = Math.sqrt(sum / data.length);
@@ -1368,10 +1554,11 @@ async function startRecording() {
   processor.connect(audioCtx.destination);
 
   // MediaRecorder → audio file
-  audioChunks = [];
+  audioChunks    = [];
+  allPcmChunks   = [];
   savedAudioPath = '';
-  summaryText = '';
-  nextStepsText = '';
+  summaryText    = '';
+  nextStepsText  = '';
   recordingStartTime = Date.now();
 
   try {
@@ -1413,21 +1600,38 @@ async function handleMediaRecorderStop() {
   }
 }
 
-function stopRecording() {
+function stopRecording({ skipRetranscribe = false } = {}) {
+  if (!recording) return;
   recording = false;
+  document.getElementById('nav-record').classList.remove('recording');
+  btnStart.disabled = false;
+  btnStop.disabled  = true;
+  setDot(dotMic, 'red');
+
+  // Capture PCM snapshot synchronously before any async code can clear it
+  const pcmSnapshot = allPcmChunks.slice();
+  allPcmChunks = [];
+
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   if (processor)   { processor.disconnect(); processor = null; }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
   if (audioCtx)    { audioCtx.close(); audioCtx = null; }
   if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: 'stop' }));
-  document.getElementById('nav-record').classList.remove('recording');
-  btnStart.disabled = false;
-  btnStop.disabled  = true;
-  setDot(dotMic, 'red');
+
+  // Launch re-transcription unless caller asked to skip (e.g. resetAll)
+  if (!skipRetranscribe && pcmSnapshot.length > 0) {
+    isRetranscribing = true;
+    retranscribeAndAnalyze(pcmSnapshot);  // fire-and-forget async
+  }
 }
 
 function resetAll() {
-  stopRecording();
+  // Abort any in-progress re-transcription
+  if (retranscribeAbortCtrl) { retranscribeAbortCtrl.abort(); retranscribeAbortCtrl = null; }
+  isRetranscribing = false;
+  hideProcessingOverlay();
+
+  stopRecording({ skipRetranscribe: true });
   if (ws) { ws.close(); ws = null; }
 
   currentMeetingId    = null;
@@ -1435,6 +1639,7 @@ function resetAll() {
   currentMeetingTitle = '';
   currentNumSpeakers  = 2;
   audioChunks         = [];
+  allPcmChunks        = [];
   savedAudioPath      = '';
   summaryText         = '';
   nextStepsText       = '';
@@ -1552,6 +1757,136 @@ function escHtml(str) {
   return str
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ─── Processing overlay helpers ───────────────────────────────────────────────
+let _progressTimer = null;
+let _progressCurrent = 0;
+
+function showProcessingOverlay(message) {
+  const overlay = document.getElementById('processing-overlay');
+  if (!overlay) return;
+  document.getElementById('processing-message').textContent = message;
+  overlay.classList.remove('hidden');
+  _setProgress(0);
+}
+
+function updateProcessingOverlay(message) {
+  const el = document.getElementById('processing-message');
+  if (el) el.textContent = message;
+}
+
+function hideProcessingOverlay() {
+  const overlay = document.getElementById('processing-overlay');
+  if (overlay) overlay.classList.add('hidden');
+  _clearProgressTimer();
+}
+
+function _setProgress(pct) {
+  _progressCurrent = Math.min(100, Math.max(0, pct));
+  const bar = document.getElementById('processing-progress-bar');
+  const label = document.getElementById('processing-percent');
+  if (bar) bar.style.width = _progressCurrent + '%';
+  if (label) label.textContent = Math.round(_progressCurrent) + '%';
+}
+
+function _clearProgressTimer() {
+  if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+}
+
+/**
+ * Simulate progress from `from` toward `target` over time.
+ * The bar never actually reaches `target` — it slows exponentially.
+ * Call _setProgress(100) when the step truly completes.
+ */
+function startProgressSimulation(from, target) {
+  _clearProgressTimer();
+  _setProgress(from);
+  _progressTimer = setInterval(() => {
+    const remaining = target - _progressCurrent;
+    if (remaining <= 0.3) return;
+    _setProgress(_progressCurrent + remaining * 0.05);
+  }, 200);
+}
+
+function completeProgress(pct = 100) {
+  _clearProgressTimer();
+  _setProgress(pct);
+}
+
+// ─── Post-recording re-transcription & analysis ───────────────────────────────
+async function retranscribeAndAnalyze(chunks) {
+  retranscribeAbortCtrl = new AbortController();
+  const { signal } = retranscribeAbortCtrl;
+
+  const msgTranscribing = language === 'fr' ? 'Transcription en cours…'    : 'Transcription in progress…';
+  const msgAnalyzing    = language === 'fr' ? 'Analyse IA en cours…'        : 'AI analysis in progress…';
+  const msgSaving       = language === 'fr' ? 'Sauvegarde…'                 : 'Saving…';
+
+  showProcessingOverlay(msgTranscribing);
+  startProgressSimulation(0, 85);
+
+  try {
+    // Build a single contiguous Float32Array from all accumulated chunks
+    const totalSamples = chunks.reduce((s, c) => s + c.length, 0);
+    const combined = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const c of chunks) { combined.set(c, offset); offset += c.length; }
+
+    // POST raw PCM to the server for a clean full transcription
+    const resp = await fetch(RETRANSCRIBE_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body:    combined.buffer,
+      signal,
+    });
+
+    if (!isRetranscribing) return;
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const result = await resp.json();
+    if (!isRetranscribing) return;
+
+    completeProgress(100);
+
+    // Replace real-time transcription with the clean re-transcription
+    allSentences = result.sentences || [];
+    transcriptEl.value = result.fullText || '';
+    renderTranscriptDisplay();
+    renderSpeakersPanel();
+    renderTimestamps();
+    btnCsv.disabled = allSentences.length === 0;
+    btnSrt.disabled = allSentences.length === 0;
+
+    const speakerText = buildSpeakerText(allSentences) || result.fullText || '';
+
+    // Flush real-time LLM queues — final analysis takes priority
+    llmQueueK   = [];
+    llmQueueQ   = [];
+    llmQueueAns = [];
+    await waitForQueues();
+    if (!isRetranscribing) return;
+
+    // Run single-call LLM analysis on the clean transcription
+    updateProcessingOverlay(msgAnalyzing);
+    startProgressSimulation(0, 90);
+    await finalAnalysis(speakerText);
+    if (!isRetranscribing) return;
+    completeProgress(100);
+
+    // Persist to DB
+    updateProcessingOverlay(msgSaving);
+    if (currentMeetingId !== null) await autoSave();
+
+  } catch (e) {
+    if (signal.aborted) return;
+    console.error('[retranscribe]', e);
+    showNotification('⚠ Re-transcription error: ' + e.message);
+  } finally {
+    isRetranscribing      = false;
+    retranscribeAbortCtrl = null;
+    hideProcessingOverlay();
+  }
 }
 
 // ─── Events ───────────────────────────────────────────────────────────────────
@@ -1865,6 +2200,21 @@ document.querySelectorAll('.theme-option').forEach(btn => {
     }
   });
 })();
+
+// ─── Q&A section collapse / expand ────────────────────────────────────────────
+document.querySelectorAll('.qa-section-toggle').forEach(btn => {
+  const section = document.getElementById(btn.dataset.target);
+  if (!section) return;
+
+  // Restore saved state
+  const key = 'parakeet-qa-collapsed-' + btn.dataset.target;
+  if (localStorage.getItem(key) === '1') section.classList.add('collapsed');
+
+  btn.addEventListener('click', () => {
+    const collapsed = section.classList.toggle('collapsed');
+    localStorage.setItem(key, collapsed ? '1' : '0');
+  });
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 applyTheme(localStorage.getItem('parakeet-theme') || 'light');
