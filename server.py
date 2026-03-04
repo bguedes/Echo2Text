@@ -138,6 +138,7 @@ def load_diarization():
             _diarization_on  = True
         print(f"[diarization] Pipeline ready ({device}).")
     except Exception as e:
+        import traceback
         msg = str(e)
         if '403' in msg or 'gated' in msg or 'restricted' in msg:
             import re
@@ -147,7 +148,9 @@ def load_diarization():
             print(f"[diarization] Accept terms at: https://huggingface.co/{model}")
             print(f"[diarization] Then restart the server.")
         else:
-            print(f"[diarization] Error: {e}")
+            print(f"[diarization] LOAD ERROR: {e}")
+            print("[diarization] Full traceback:")
+            traceback.print_exc()
 
 threading.Thread(target=load_diarization, daemon=True).start()
 
@@ -346,7 +349,9 @@ def diarize_chunk(audio_float32, time_offset, sentences, num_speakers=None):
         return merge_map
 
     except Exception as e:
+        import traceback
         print(f"[diarization] Chunk error: {e}")
+        traceback.print_exc()
         for s in sentences:
             s.setdefault('speaker', None)
         return {}
