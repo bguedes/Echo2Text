@@ -22,6 +22,8 @@ load_dotenv()
 # ─── Platform detection ───────────────────────────────────────────────────────
 def _detect_backend():
     """MLX on Apple Silicon, ONNX everywhere else."""
+    if os.environ.get('PARAKEET_BACKEND', '').lower() == 'onnx':
+        return 'onnx'
     if sys.platform == 'darwin' and _sys_platform.machine() == 'arm64':
         try:
             import mlx.core  # noqa — check MLX is installed
@@ -77,29 +79,71 @@ _asr_model      = None
 _asr_model_lock = threading.Lock()
 _model_ready    = False
 
+# ─── MLX single-thread executor ───────────────────────────────────────────────
+# Metal (MLX GPU) requires all GPU calls to happen on the same thread that
+# initialized the Metal context.  Calling from arbitrary threads causes
+# SIGSEGV in mlx::core::metal::CommandEncoder::dispatch_threads.
+# Solution: one dedicated persistent thread owns all MLX calls.
+if BACKEND == 'mlx':
+    _mlx_request_q  = queue.Queue()   # (fn, args, kwargs, result_event, result_box)
+    _mlx_result_box = {}              # filled by the MLX thread
+
+    def _mlx_thread_main():
+        """Persistent thread that owns the Metal context."""
+        # Import and initialise MLX here — this thread owns the Metal context.
+        from parakeet_mlx import from_pretrained as _ptrained
+        global _asr_model, _model_ready
+        print("Loading Parakeet MLX model (GPU)…")
+        _asr_model   = _ptrained("mlx-community/parakeet-tdt-0.6b-v3")
+        _model_ready = True
+        print("ASR model ready (MLX GPU).")
+
+        while True:
+            fn, args, kwargs, done_event, box = _mlx_request_q.get()
+            if fn is None:   # shutdown sentinel
+                break
+            try:
+                box['result'] = fn(*args, **kwargs)
+            except Exception as exc:
+                box['error'] = exc
+            finally:
+                done_event.set()
+
+    _mlx_thread = threading.Thread(target=_mlx_thread_main, daemon=True, name='mlx-gpu')
+    _mlx_thread.start()
+
+    def _mlx_call(fn, *args, **kwargs):
+        """Submit fn(*args, **kwargs) to the MLX thread and return the result."""
+        box   = {}
+        event = threading.Event()
+        _mlx_request_q.put((fn, args, kwargs, event, box))
+        event.wait()
+        if 'error' in box:
+            raise box['error']
+        return box['result']
+
 def get_model():
     global _asr_model, _model_ready
+    if BACKEND == 'mlx':
+        # Model is loaded by the MLX thread; wait until ready.
+        _mlx_thread.join(timeout=0)   # non-blocking — just check
+        while not _model_ready:
+            time.sleep(0.1)
+        return _asr_model
     with _asr_model_lock:
         if _asr_model is None:
-            if BACKEND == 'mlx':
-                print("Loading Parakeet MLX model…")
-                from parakeet_mlx import from_pretrained
-                _asr_model = from_pretrained("mlx-community/parakeet-tdt-0.6b-v3")
-            else:
-                print("Loading Parakeet ONNX model…")
-                _asr_model = (
-                    onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", providers=providers)
-                    .with_timestamps()
-                )
+            print("Loading Parakeet ONNX model…")
+            _asr_model = (
+                onnx_asr.load_model("nemo-parakeet-tdt-0.6b-v3", providers=providers)
+                .with_timestamps()
+            )
             _model_ready = True
             print("ASR model ready.")
     return _asr_model
 
-# Pre-load in a background thread to avoid blocking server startup
-def _preload():
-    get_model()
-
-threading.Thread(target=_preload, daemon=True).start()
+# Pre-load ONNX model in a background thread (MLX is loaded by _mlx_thread above)
+if BACKEND == 'onnx':
+    threading.Thread(target=get_model, daemon=True).start()
 
 # ─── Diarization pipeline (optional — requires HF_TOKEN) ──────────────────────
 
@@ -419,12 +463,10 @@ def _transcribe_onnx(audio_float32, time_offset):
 # ── Backend MLX (Apple Silicon) ───────────────────────────────────────────────
 def _transcribe_mlx(audio_float32, time_offset):
     """
-    parakeet-mlx expects an audio file path. Write a temporary WAV using
-    stdlib `wave` (no extra dependency) then call model.transcribe(path).
-    result.sentences is a list of AlignedSentence with .text, .start, .end
+    parakeet-mlx expects an audio file path. Write a temporary WAV, then
+    dispatch model.transcribe() to the dedicated MLX thread (Metal owner).
     """
     import tempfile
-    model   = get_model()
     fd, tmp = tempfile.mkstemp(suffix='.wav')
     os.close(fd)
     try:
@@ -434,7 +476,9 @@ def _transcribe_mlx(audio_float32, time_offset):
             wf.setsampwidth(2)
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes(pcm.tobytes())
-        result = model.transcribe(tmp)
+        # Run on the MLX thread that owns the Metal context
+        model  = get_model()
+        result = _mlx_call(model.transcribe, tmp)
     finally:
         os.unlink(tmp)
 
