@@ -26,7 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   audio: {
-    save: (meetingId, dataBase64) => ipcRenderer.invoke('audio:save', { meetingId, dataBase64 }),
+    save: (meetingId, dataBase64, filename) => ipcRenderer.invoke('audio:save', { meetingId, dataBase64, filename }),
   },
 
   desktopCapturer: {
@@ -37,4 +37,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     open:  (url) => ipcRenderer.invoke('open-url-window', url),
     close: ()    => ipcRenderer.invoke('close-url-window'),
   },
+
+  // URL audio — PCM streamed from the urlWindow preload via main process
+  onUrlAudioPcm:  (cb) => ipcRenderer.on('url-audio-pcm', (_evt, buf) => cb(buf)),
+  offUrlAudioPcm: ()   => ipcRenderer.removeAllListeners('url-audio-pcm'),
 });

@@ -1,16 +1,49 @@
 {
-  "name": "parakeet-electron",
+  "name": "echo2text",
+  "productName": "Echo2Text",
   "version": "1.0.0",
   "description": "Parakeet TDT – Transcription & Analyse en temps réel",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder --mac"
   },
   "dependencies": {
     "docx": "^8.5.0",
     "jszip": "^3.10.1"
   },
   "devDependencies": {
-    "electron": "^32.0.0"
+    "electron": "^40.7.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.echo2text.app",
+    "productName": "Echo2Text",
+    "mac": {
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Echo2Text needs screen recording access to capture system audio.",
+        "NSMicrophoneUsageDescription": "Echo2Text needs microphone access for audio transcription."
+      }
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.cache"
+    ],
+    "extraResources": [
+      {
+        "from": "../server.py",
+        "to": "."
+      },
+      {
+        "from": "../venv",
+        "to": "venv"
+      },
+      {
+        "from": "../requirements-mac.txt",
+        "to": "."
+      }
+    ]
   }
 }

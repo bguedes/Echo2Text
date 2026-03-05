@@ -425,6 +425,7 @@ button:focus-visible {
 .speaker-segment { color: var(--text); }
 
 /* ─── Speaker badges ─────────────────────────────────────────────────────────── */
+.speaker-badge-xs { font-size: 10px; padding: 1px 7px; }
 .speaker-badge {
   display: inline-block;
   font-size: 11px;
@@ -1407,6 +1408,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 
 /* ── Email recap pane ─────────────────────────────────────────────────────────── */
+.email-pane-actions { display: flex; gap: 8px; }
 .email-pane-header {
   display: flex;
   align-items: center;
@@ -1510,6 +1512,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 }
 /* .summary-rich in lib detail pane needs a bit more breathing room */
 .meeting-detail-pane[data-pane="summary"] .summary-rich { gap: 3px; }
+.detail-audio-unavail { padding: 0; font-style: italic; }
 .detail-audio-player {
   width: 100%;
   height: 36px;
@@ -1646,6 +1649,15 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   flex-shrink: 0;
   border: 1px solid var(--border);
 }
+.theme-swatch-dark   { background: linear-gradient(135deg,#1e2130 50%,#ff7c00 50%); }
+.theme-swatch-light  { background: linear-gradient(135deg,#F8F9FB 50%,#EA580C 50%); }
+.theme-swatch-nord   { background: linear-gradient(135deg,#3b4252 50%,#88c0d0 50%); }
+.theme-swatch-sepia  { background: linear-gradient(135deg,#fffdf5 50%,#8b5a00 50%); }
+
+/* Utility classes to replace remaining inline styles */
+#audio-file-input   { display: none; }
+#transcript-area    { display: none; }
+.lib-col-header-actions { display: flex; gap: 6px; align-items: center; }
 
 .theme-option-text {
   display: flex;
@@ -1795,6 +1807,7 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   border-left: 1px solid var(--border);
 }
 
+.analysis-header-right { display: flex; align-items: center; gap: 10px; }
 .analysis-header {
   flex-shrink: 0;
   padding: 14px 20px;

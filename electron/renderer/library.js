@@ -1,5 +1,29 @@
 'use strict';
 
+// ─── Meeting transcript export helpers ────────────────────────────────────────
+function buildMeetingCSV(m) {
+  const rows = ['Index,Speaker,Start (s),End (s),Segment'];
+  (m.sentences || []).forEach((s, i) => {
+    const name = _spkName(s.speaker, m.speaker_names);
+    rows.push(`${i + 1},"${name.replace(/"/g, '""')}",${s.start_time ?? 0},${s.end_time ?? 0},"${(s.segment || '').replace(/"/g, '""')}"`);
+  });
+  return rows.join('\r\n');
+}
+
+function buildMeetingTXT(m) {
+  return (m.sentences || []).map(s => {
+    const name = _spkName(s.speaker, m.speaker_names);
+    return name ? `[${name}] ${s.segment || ''}` : (s.segment || '');
+  }).join('\n');
+}
+
+function _spkName(speaker, speakerNames) {
+  if (speaker == null) return '';
+  const key = String(speaker);
+  if (speakerNames?.[key]) return speakerNames[key];
+  return typeof speaker === 'number' ? `Speaker ${speaker + 1}` : String(speaker);
+}
+
 // ─── Library state ────────────────────────────────────────────────────────────
 let libOpen            = false;
 let companies          = [];
@@ -65,10 +89,11 @@ function renderCompanies() {
     el.className = 'lib-company-item' + (c.id === selectedCompanyId ? ' active' : '');
     el.dataset.id = c.id;
     el.innerHTML = `
-      <span class="company-color-dot" style="background:${escHtml(c.color || '#ff7c00')}"></span>
+      <span class="company-color-dot"></span>
       <span class="company-name">${escHtml(c.name)}</span>
       <button class="btn-delete-company" data-id="${c.id}" title="Delete">&#10005;</button>
     `;
+    el.querySelector('.company-color-dot').style.background = c.color || '#ff7c00';
     el.addEventListener('click', (e) => {
       if (e.target.classList.contains('btn-delete-company')) return;
       selectCompany(c.id, c.name);
@@ -228,7 +253,7 @@ function renderMeetingDetail(m) {
   // ── Audio ──────────────────────────────────────────────────────────────────
   const audioHtml = m.audio_path
     ? `<audio controls src="file://${m.audio_path.replace(/\\/g, '/')}" class="detail-audio-player"></audio>`
-    : `<span class="lib-empty" style="padding:0;font-style:italic">${_t('detail.audio_unavail')}</span>`;
+    : `<span class="lib-empty detail-audio-unavail">${_t('detail.audio_unavail')}</span>`;
 
   // ── Pane: Summary ──────────────────────────────────────────────────────────
   const _sumText = m.summary?.summary_text || '';
@@ -303,7 +328,7 @@ function renderMeetingDetail(m) {
       ${m.sentences.map(s => {
         const idx  = typeof s.speaker === 'number' ? s.speaker : -1;
         const name = speakerNames[s.speaker] || (idx >= 0 ? `Spk ${idx + 1}` : null);
-        const badge = name ? `<span class="speaker-badge ${COLORS[idx % COLORS.length] || ''}" style="font-size:10px;padding:1px 7px">${escHtml(name)}</span>` : '';
+        const badge = name ? `<span class="speaker-badge speaker-badge-xs ${COLORS[idx % COLORS.length] || ''}">${escHtml(name)}</span>` : '';
         return `<div class="detail-seg-row">
           <span class="detail-seg-ts">${Number(s.start_time).toFixed(1)}s</span>
           ${badge}
@@ -324,6 +349,8 @@ function renderMeetingDetail(m) {
       <div class="md-header-actions">
         <button class="btn-export-pdf" data-id="${m.id}" title="Export as PDF">↓ PDF</button>
         <button class="btn-export-gdoc" data-id="${m.id}" title="Export document (format configurable in Settings)">↑ Export Doc</button>
+        <button class="btn-export-csv" title="Export transcript as CSV (with speaker labels)">↓ CSV</button>
+        <button class="btn-export-txt" title="Export transcript as plain text (with speaker labels)">↓ Transcript</button>
         <button class="btn-delete-meeting btn-danger" data-id="${m.id}">${_t('detail.delete_btn')}</button>
       </div>
     </div>
@@ -385,6 +412,28 @@ function renderMeetingDetail(m) {
   // Export Document (format from settings)
   const gdocBtn = libMeetingDetail.querySelector('.btn-export-gdoc');
   if (gdocBtn) gdocBtn.addEventListener('click', () => exportMeetingAsDocument(m));
+
+  // Export CSV transcript
+  const csvBtn = libMeetingDetail.querySelector('.btn-export-csv');
+  if (csvBtn) csvBtn.addEventListener('click', () => {
+    const slug = (m.title || 'transcript').replace(/[^a-z0-9]+/gi, '_').slice(0, 40);
+    window.electronAPI.saveFile({
+      defaultName: `${slug}.csv`,
+      content:     buildMeetingCSV(m),
+      filters:     [{ name: 'CSV', extensions: ['csv'] }],
+    });
+  });
+
+  // Export plain-text transcript with speaker labels
+  const txtBtn = libMeetingDetail.querySelector('.btn-export-txt');
+  if (txtBtn) txtBtn.addEventListener('click', () => {
+    const slug = (m.title || 'transcript').replace(/[^a-z0-9]+/gi, '_').slice(0, 40);
+    window.electronAPI.saveFile({
+      defaultName: `${slug}.txt`,
+      content:     buildMeetingTXT(m),
+      filters:     [{ name: 'Text', extensions: ['txt'] }],
+    });
+  });
 
   // Delete button
   const delBtn = libMeetingDetail.querySelector('.btn-delete-meeting');
@@ -622,7 +671,7 @@ function buildMeetingHtml(m) {
         const name = speakerNames[turn.speaker] || (idx >= 0 ? `Speaker ${idx + 1}` : null);
         const color = COLORS[idx % COLORS.length] || '#555';
         return `<div class="speaker-turn">
-          ${name ? `<div class="speaker-name" style="color:${color}">${esc(name)}</div>` : ''}
+          ${name ? `<div class="speaker-name ${color}">${esc(name)}</div>` : ''}
           <div class="speaker-text">${esc(turn.segs.join(' '))}</div>
         </div>`;
       }).join('')}
@@ -899,7 +948,7 @@ function renderEmailPane(pane, meetingId, text, generatedAt) {
   pane.innerHTML = `
     <div class="email-pane-header">
       ${date ? `<span class="email-date">${escHtml(date)}</span>` : ''}
-      <div style="display:flex;gap:8px">
+      <div class="email-pane-actions">
         <button class="btn-sm email-copy-btn">${_t('detail.email_copy')}</button>
         <button class="btn-sm email-regen-btn">${_t('detail.email_regen')}</button>
       </div>
@@ -1218,7 +1267,7 @@ async function runAnalysisLLM(companyId, companyName) {
     libAnalysisPane.innerHTML = `
       <div class="analysis-header">
         <span class="analysis-title">${escHtml(companyName)}</span>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div class="analysis-header-right">
           <span class="analysis-date">${escHtml(now)}</span>
           <button class="btn-sm" id="btn-regen-analysis">${lang === 'fr' ? '⟳ Régénérer' : '⟳ Regenerate'}</button>
         </div>
@@ -1255,7 +1304,7 @@ async function showAnalysisPane(companyId, companyName) {
     libAnalysisPane.innerHTML = `
       <div class="analysis-header">
         <span class="analysis-title">${escHtml(companyName)}</span>
-        <div style="display:flex;align-items:center;gap:10px">
+        <div class="analysis-header-right">
           ${date ? `<span class="analysis-date">${escHtml(date)}</span>` : ''}
           <button class="btn-sm" id="btn-regen-analysis">${lang === 'fr' ? '⟳ Régénérer' : '⟳ Regenerate'}</button>
         </div>

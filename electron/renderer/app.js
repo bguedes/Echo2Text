@@ -178,70 +178,22 @@ NOTHING`;
 // ─── Prompt final unifié — UN seul appel LLM pour toute l'analyse de fin de réunion ─────────────────
 
 const SYSTEM_PROMPT_FINAL_ANALYSIS = `Tu es un assistant expert en analyse de réunion professionnelle.
-Voici la transcription COMPLÈTE d'une réunion. Analyse-la intégralement et produis un rapport complet en JSON valide strict (sans markdown, sans backtick, sans commentaire, sans texte avant ou après) :
-
-{
-  "key_points": [
-    "Décision, fait important, chiffre, engagement ou risque clé 1",
-    "..."
-  ],
-  "questions": [
-    {
-      "text": "Question posée lors de la réunion ?",
-      "answer": "Réponse concise et pratique basée sur les échanges (2 à 4 phrases)."
-    }
-  ],
-  "actions": [
-    "Responsable — Description concrète de l'action",
-    "Description d'une action sans responsable identifié"
-  ],
-  "discovery_questions": [
-    "Question ouverte à poser lors du prochain échange pour approfondir un sujet effleuré ou clarifier un enjeu non résolu ?",
-    "..."
-  ],
-  "summary": "## Synthèse globale\n\n**Contexte** : [participants, enjeux, objectif de la réunion]\n\n**Points abordés** : [sujets traités, arguments de chaque partie]\n\n**État actuel** : [accords, désaccords, réserves exprimées]\n\n## Actions réalisées ✓\n\n1. **[Responsable]** — [description action accomplie]\n2. ...\n\n## Actions en attente ⏳\n\n1. **[Responsable]** — [description] — Échéance : [date si mentionnée]\n2. ...\n\n## Points de vigilance ⚠\n\n1. **[Risque ou tension]** : [description et impact potentiel]\n2. ...\n\n## Recommandations & prochaines étapes\n\n1. [Recommandation concrète et actionnable]\n2. ..."
-}
-
-RÈGLES :
-- key_points : sois EXHAUSTIF — décisions, faits, chiffres, dates, engagements, risques, opportunités, tensions, accords.
-- questions : extrais TOUTES les questions (directes, indirectes, rhétoriques). Génère une réponse contextuelle pour chacune à partir de la transcription.
-- actions : TOUTES les obligations, engagements, décisions actionnables, tâches assignées — inclure le nom ou titre quand une personne est désignée.
-- discovery_questions : identifie les zones d'ombre, les sujets effleurés et les enjeux non approfondis. Génère 3 à 7 questions ouvertes percutantes à poser lors du prochain échange pour continuer la découverte et enrichir le contexte. Ne pas reprendre les questions déjà posées dans la réunion.
-- summary : rapport structuré complet. Chaque section doit être substantielle. Utilise uniquement des listes numérotées ou à puces, PAS de tableaux markdown.
-- Réponds UNIQUEMENT avec le JSON valide. Zéro texte avant ou après.`;
+Analyse la transcription et réponds UNIQUEMENT avec un JSON valide (sans markdown, sans backtick, sans texte avant ou après) ayant exactement ces champs :
+- "key_points": array de strings — décisions, faits, chiffres, engagements, risques (exhaustif)
+- "questions": array de {"text":"...","answer":"..."} — toutes les questions posées avec réponse contextuelle (2-4 phrases)
+- "actions": array de strings — "Responsable — description" pour chaque action/tâche assignée
+- "discovery_questions": array de 3 à 7 strings — questions ouvertes à poser au prochain échange (pas déjà posées)
+- "summary": string markdown avec sections : Synthèse globale, Points abordés, État actuel, Actions réalisées ✓, Actions en attente ⏳, Points de vigilance ⚠, Recommandations. Listes uniquement, pas de tableaux.
+Réponds UNIQUEMENT avec le JSON valide. Zéro texte avant ou après.`;
 
 const SYSTEM_PROMPT_FINAL_ANALYSIS_EN = `You are an expert professional meeting analysis assistant.
-Here is the COMPLETE transcript of a meeting. Analyze it fully and produce a comprehensive report in strict valid JSON (no markdown, no backtick, no comment, no text before or after):
-
-{
-  "key_points": [
-    "Key decision, important fact, figure, commitment or risk 1",
-    "..."
-  ],
-  "questions": [
-    {
-      "text": "Question asked during the meeting?",
-      "answer": "Concise and practical answer based on the exchanges (2 to 4 sentences)."
-    }
-  ],
-  "actions": [
-    "Responsible — Concrete description of the action",
-    "Description of an action without an identified owner"
-  ],
-  "discovery_questions": [
-    "Open-ended question to ask at the next meeting to dig deeper into a topic that was touched upon or clarify an unresolved issue?",
-    "..."
-  ],
-  "summary": "## Global Summary\n\n**Context**: [participants, stakes, meeting objective]\n\n**Topics covered**: [subjects discussed, each party's arguments]\n\n**Current status**: [agreements, disagreements, expressed reservations]\n\n## Completed Actions ✓\n\n1. **[Owner]** — [description of completed action]\n2. ...\n\n## Pending Actions ⏳\n\n1. **[Owner]** — [description] — Due: [date if mentioned]\n2. ...\n\n## Watch Points ⚠\n\n1. **[Risk or tension]**: [description and potential impact]\n2. ...\n\n## Recommendations & Next Steps\n\n1. [Concrete, actionable recommendation]\n2. ..."
-}
-
-RULES:
-- key_points: be EXHAUSTIVE — decisions, facts, figures, dates, commitments, risks, opportunities, tensions, agreements.
-- questions: extract ALL questions (direct, indirect, rhetorical). Generate a contextual answer for each one based on the transcript.
-- actions: ALL obligations, commitments, actionable decisions, assigned tasks — include name or title when a person is designated.
-- discovery_questions: identify blind spots, topics briefly touched upon, and unresolved stakes. Generate 3 to 7 sharp open-ended questions to ask at the next meeting to continue discovery and enrich context. Do not repeat questions already asked during this meeting.
-- summary: complete structured report. Each section must be substantial. Use only numbered or bullet lists, NO markdown tables.
-- Reply ONLY with valid JSON. Zero text before or after.`;
+Analyze the transcript and reply ONLY with valid JSON (no markdown, no backtick, no text before or after) with exactly these fields:
+- "key_points": array of strings — decisions, facts, figures, commitments, risks (exhaustive)
+- "questions": array of {"text":"...","answer":"..."} — all questions asked with contextual answer (2-4 sentences)
+- "actions": array of strings — "Owner — description" for each assigned action/task
+- "discovery_questions": array of 3 to 7 strings — open-ended questions for the next meeting (not already asked)
+- "summary": markdown string with sections: Global Summary, Topics Covered, Current Status, Completed Actions ✓, Pending Actions ⏳, Watch Points ⚠, Recommendations. Lists only, no tables.
+Reply ONLY with valid JSON. Zero text before or after.`;
 
 // ─── Prompts finaux dédiés — transcription COMPLÈTE (distincts des prompts incrémentaux temps-réel) ───
 
@@ -463,6 +415,16 @@ let llmHistoryD = [{ role: 'system', content: promptDiscovery() }];
 let llmQueueD   = [];
 let llmBusyD    = false;
 
+// LLM — shared AbortController for all real-time streaming requests
+// Aborted when retranscribeAndAnalyze() starts so the final analysis
+// gets exclusive access to LMStudio's KV cache.
+let _realtimeLLMCtrl = new AbortController();
+
+// LLM — global mutex: only one real-time streaming request at a time.
+// Prevents simultaneous key-points + questions + discovery requests from
+// exhausting LMStudio's KV cache ("Context size has been exceeded").
+let _llmSharedBusy = false;
+
 // LLM — connection
 let llmModelId   = 'local-model';
 let llmConnected = false;
@@ -504,6 +466,8 @@ const btnStop       = document.getElementById('btn-stop');
 const btnReset      = document.getElementById('btn-reset');
 const btnCsv        = document.getElementById('btn-csv');
 const btnSrt        = document.getElementById('btn-srt');
+const btnTxt        = document.getElementById('btn-txt');
+function setExportBtns(disabled) { btnCsv.disabled = disabled; btnSrt.disabled = disabled; if (btnTxt) btnTxt.disabled = disabled; }
 const urlInput      = document.getElementById('lmstudio-url');
 const transcriptEl  = document.getElementById('transcript-area');
 const keypointsList = document.getElementById('keypoints-list');
@@ -553,6 +517,7 @@ async function checkLmStudio() {
 
 // ─── WebSocket ASR ────────────────────────────────────────────────────────────
 function connectWS() {
+  if (!recording) return;  // never open a WS connection outside of an active recording
   if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) return;
   ws = new WebSocket(WS_URL);
   ws.binaryType = 'arraybuffer';
@@ -569,12 +534,16 @@ function connectWS() {
     } catch (e) { console.warn('[ws]', e); }
   };
 
-  ws.onclose = () => { if (recording) setTimeout(connectWS, 3000); };
+  ws.onclose = () => { ws = null; if (recording) setTimeout(connectWS, 3000); };
   ws.onerror = (e) => console.error('[ws]', e);
 }
 
 // ─── Transcript handling ──────────────────────────────────────────────────────
 function handleTranscript(msg) {
+  // Ignore all WS messages while re-transcription is running — retranscribeAndAnalyze()
+  // owns allSentences from this point and must not be overwritten by stale WS data.
+  if (isRetranscribing) return;
+
   allSentences = msg.sentences || [];
   transcriptEl.value = msg.fullText || '';
   renderTranscriptDisplay();
@@ -585,8 +554,7 @@ function handleTranscript(msg) {
 
   if (msg.final) {
     setDot(dotMic, 'red');
-    btnCsv.disabled = allSentences.length === 0;
-    btnSrt.disabled = allSentences.length === 0;
+    setExportBtns(allSentences.length === 0);
 
     // If re-transcription is in progress, skip WS-based analysis —
     // retranscribeAndAnalyze() will call finalAnalysis + autoSave itself.
@@ -608,7 +576,10 @@ function handleTranscript(msg) {
       if (currentMeetingId !== null) {
         await autoSave();
       }
-    })();
+    })().catch(e => {
+      console.error('[handleTranscript final]', e);
+      if (currentMeetingId !== null) autoSave().catch(() => {});
+    });
   }
 }
 
@@ -707,8 +678,7 @@ function renderTimestamps() {
       transcriptEl.value = allSentences.map(s => s.segment).join(' ');
       if (lastSentIdx > allSentences.length) lastSentIdx = allSentences.length;
       renderTimestamps();
-      btnCsv.disabled = allSentences.length === 0;
-      btnSrt.disabled = allSentences.length === 0;
+      setExportBtns(allSentences.length === 0);
     });
   });
 }
@@ -732,46 +702,60 @@ function maybeTriggerKeyPoints(flush = false) {
   }
 }
 
+// Drain whichever real-time queue has pending items (priority: K > Q > Ans > D).
+// Called after each processor finishes so the shared mutex is passed along.
+function drainRealtimeLLMQueues() {
+  if (_llmSharedBusy) return;
+  if (llmQueueK.length   > 0) { processKeyPointsQueue(); return; }
+  if (llmQueueQ.length   > 0) { processQuestionQueue();  return; }
+  if (llmQueueAns.length > 0) { processAnswerQueue();    return; }
+  if (llmQueueD.length   > 0) { processDiscoveryQueue(); return; }
+}
+
 async function processKeyPointsQueue() {
-  if (llmBusyK || llmQueueK.length === 0) return;
+  if (llmBusyK || llmQueueK.length === 0 || _llmSharedBusy) return;
   llmBusyK = true;
+  _llmSharedBusy = true;
 
   const fragment = llmQueueK.shift();
   llmHistoryK.push({ role: 'user', content: fragment });
 
   try {
     await checkLmStudio();
-    if (!llmConnected) { llmHistoryK.pop(); llmBusyK = false; return; }
+    if (!llmConnected) { llmHistoryK.pop(); }
+    else {
+      const url  = urlInput.value.trim();
+      const resp = await fetch(url + '/chat/completions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+        body:    JSON.stringify({
+          model: llmModelId, messages: llmHistoryK,
+          temperature: 0.1, max_tokens: 400, stream: true,
+        }),
+        signal: _realtimeLLMCtrl.signal,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    const url  = urlInput.value.trim();
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages: llmHistoryK,
-        temperature: 0.1, max_tokens: 400, stream: true,
-      }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const { fullResponse } = await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('POINT:')) {
-        const text = line.slice(6).trim();
-        if (text && !keyPoints.includes(text)) {
-          keyPoints.push(text);
-          renderKeyPoints();
+      const { fullResponse } = await streamSSE(resp, (line) => {
+        if (line.toUpperCase().startsWith('POINT:')) {
+          const text = line.slice(6).trim();
+          if (text && !keyPoints.includes(text)) {
+            keyPoints.push(text);
+            renderKeyPoints();
+          }
         }
-      }
-    });
+      });
 
-    llmHistoryK.push({ role: 'assistant', content: fullResponse });
+      llmHistoryK.push({ role: 'assistant', content: fullResponse });
+    }
   } catch (e) {
-    console.error('[llm-kp]', e);
+    if (e.name !== 'AbortError') console.error('[llm-kp]', e);
     llmHistoryK.pop();
   }
 
   llmBusyK = false;
-  if (llmQueueK.length > 0) processKeyPointsQueue();
+  _llmSharedBusy = false;
+  drainRealtimeLLMQueues();
 }
 
 function renderKeyPoints() {
@@ -812,54 +796,58 @@ function maybeTriggerQuestions(flush = false) {
 }
 
 async function processQuestionQueue() {
-  if (llmBusyQ || llmQueueQ.length === 0) return;
+  if (llmBusyQ || llmQueueQ.length === 0 || _llmSharedBusy) return;
   llmBusyQ = true;
+  _llmSharedBusy = true;
 
   const fragment = llmQueueQ.shift();
   llmHistoryQ.push({ role: 'user', content: fragment });
 
   try {
     await checkLmStudio();
-    if (!llmConnected) { llmHistoryQ.pop(); llmBusyQ = false; return; }
+    if (!llmConnected) { llmHistoryQ.pop(); }
+    else {
+      const url  = urlInput.value.trim();
+      const resp = await fetch(url + '/chat/completions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+        body:    JSON.stringify({
+          model: llmModelId, messages: llmHistoryQ,
+          temperature: 0.1, max_tokens: 256, stream: true,
+        }),
+        signal: _realtimeLLMCtrl.signal,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    const url  = urlInput.value.trim();
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages: llmHistoryQ,
-        temperature: 0.1, max_tokens: 256, stream: true,
-      }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const { fullResponse } = await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('QUESTION:')) {
-        const text = line.slice(9).trim();
-        if (text && !questions.find(q => q.text === text)) {
-          const q = { text, answer: null, answering: true };
-          questions.push(q);
-          renderQuestions();
-          llmQueueAns.push(q);
-          processAnswerQueue();
+      const { fullResponse } = await streamSSE(resp, (line) => {
+        if (line.toUpperCase().startsWith('QUESTION:')) {
+          const text = line.slice(9).trim();
+          if (text && !questions.find(q => q.text === text)) {
+            const q = { text, answer: null, answering: true };
+            questions.push(q);
+            renderQuestions();
+            llmQueueAns.push(q);
+          }
         }
-      }
-    });
+      });
 
-    llmHistoryQ.push({ role: 'assistant', content: fullResponse });
+      llmHistoryQ.push({ role: 'assistant', content: fullResponse });
+    }
   } catch (e) {
-    console.error('[llm-q]', e);
+    if (e.name !== 'AbortError') console.error('[llm-q]', e);
     llmHistoryQ.pop();
   }
 
   llmBusyQ = false;
-  if (llmQueueQ.length > 0) processQuestionQueue();
+  _llmSharedBusy = false;
+  drainRealtimeLLMQueues();
 }
 
 // ─── LLM — Question answers ───────────────────────────────────────────────────
 async function processAnswerQueue() {
-  if (llmBusyAns || llmQueueAns.length === 0) return;
+  if (llmBusyAns || llmQueueAns.length === 0 || _llmSharedBusy) return;
   llmBusyAns = true;
+  _llmSharedBusy = true;
 
   const qObj = llmQueueAns.shift();
   const url  = urlInput.value.trim();
@@ -869,101 +857,104 @@ async function processAnswerQueue() {
     if (!llmConnected) {
       qObj.answering = false;
       renderQuestions();
-      llmBusyAns = false;
-      return;
-    }
+    } else {
+      const messages = [
+        { role: 'system', content: promptAnswer() },
+        { role: 'user',   content: qObj.text },
+      ];
 
-    const messages = [
-      { role: 'system', content: promptAnswer() },
-      { role: 'user',   content: qObj.text },
-    ];
+      const resp = await fetch(url + '/chat/completions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+        body:    JSON.stringify({
+          model: llmModelId, messages,
+          temperature: 0.3, max_tokens: 200, stream: true,
+        }),
+        signal: _realtimeLLMCtrl.signal,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages,
-        temperature: 0.3, max_tokens: 200, stream: true,
-      }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      // Progressive streaming — response displays token by token
+      const reader  = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let sseBuf = '';
+      let answer = '';
 
-    // Progressive streaming — response displays token by token
-    const reader  = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let sseBuf = '';
-    let answer = '';
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      sseBuf += decoder.decode(value, { stream: true });
-      const lines = sseBuf.split('\n');
-      sseBuf = lines.pop();
-      for (const line of lines) {
-        const t = line.trim();
-        if (!t || t === 'data: [DONE]' || !t.startsWith('data:')) continue;
-        try {
-          const j     = JSON.parse(t.slice(5).trim());
-          const token = j.choices?.[0]?.delta?.content ?? '';
-          if (token) { answer += token; qObj.answer = answer; renderQuestions(); }
-        } catch (_) {}
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        sseBuf += decoder.decode(value, { stream: true });
+        const lines = sseBuf.split('\n');
+        sseBuf = lines.pop();
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t || t === 'data: [DONE]' || !t.startsWith('data:')) continue;
+          try {
+            const j     = JSON.parse(t.slice(5).trim());
+            const token = j.choices?.[0]?.delta?.content ?? '';
+            if (token) { answer += token; qObj.answer = answer; renderQuestions(); }
+          } catch (_) {}
+        }
       }
+      qObj.answering = false;
+      renderQuestions();
     }
-    qObj.answering = false;
-    renderQuestions();
-
   } catch (e) {
-    console.error('[llm-ans]', e);
+    if (e.name !== 'AbortError') console.error('[llm-ans]', e);
     qObj.answering = false;
     renderQuestions();
   }
 
   llmBusyAns = false;
-  if (llmQueueAns.length > 0) processAnswerQueue();
+  _llmSharedBusy = false;
+  drainRealtimeLLMQueues();
 }
 
 // ─── LLM — Real-time discovery questions ─────────────────────────────────────
 async function processDiscoveryQueue() {
-  if (llmBusyD || llmQueueD.length === 0) return;
+  if (llmBusyD || llmQueueD.length === 0 || _llmSharedBusy) return;
   llmBusyD = true;
+  _llmSharedBusy = true;
 
   const fragment = llmQueueD.shift();
   llmHistoryD.push({ role: 'user', content: fragment });
 
   try {
     await checkLmStudio();
-    if (!llmConnected) { llmHistoryD.pop(); llmBusyD = false; return; }
+    if (!llmConnected) { llmHistoryD.pop(); }
+    else {
+      const url  = urlInput.value.trim();
+      const resp = await fetch(url + '/chat/completions', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
+        body:    JSON.stringify({
+          model: llmModelId, messages: llmHistoryD,
+          temperature: 0.4, max_tokens: 256, stream: true,
+        }),
+        signal: _realtimeLLMCtrl.signal,
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
 
-    const url  = urlInput.value.trim();
-    const resp = await fetch(url + '/chat/completions', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({
-        model: llmModelId, messages: llmHistoryD,
-        temperature: 0.4, max_tokens: 256, stream: true,
-      }),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-    const { fullResponse } = await streamSSE(resp, (line) => {
-      if (line.toUpperCase().startsWith('DISCOVERY:')) {
-        const text = line.slice(10).trim();
-        if (text && !discoveryQuestions.includes(text)) {
-          discoveryQuestions.push(text);
-          renderDiscovery();
+      const { fullResponse } = await streamSSE(resp, (line) => {
+        if (line.toUpperCase().startsWith('DISCOVERY:')) {
+          const text = line.slice(10).trim();
+          if (text && !discoveryQuestions.includes(text)) {
+            discoveryQuestions.push(text);
+            renderDiscovery();
+          }
         }
-      }
-    });
+      });
 
-    llmHistoryD.push({ role: 'assistant', content: fullResponse });
+      llmHistoryD.push({ role: 'assistant', content: fullResponse });
+    }
   } catch (e) {
-    console.error('[llm-d]', e);
+    if (e.name !== 'AbortError') console.error('[llm-d]', e);
     llmHistoryD.pop();
   }
 
   llmBusyD = false;
-  if (llmQueueD.length > 0) processDiscoveryQueue();
+  _llmSharedBusy = false;
+  drainRealtimeLLMQueues();
 }
 
 // ─── Wait for all real-time LLM queues to be idle ────────────────────────────
@@ -993,7 +984,14 @@ function waitForQueues(timeoutMs = 120000) {
 
 // ─── Analyse finale — UN seul appel LLM, transcription complète → JSON structuré ─────────────────────
 async function finalAnalysis(fullText) {
-  if (!fullText.trim()) return;
+  console.log(`[finalAnalysis] appelé — fullText: ${fullText.length} chars, trim: ${fullText.trim().length}`);
+  if (!fullText.trim()) {
+    console.warn('[finalAnalysis] ABANDON — transcript vide, rien à analyser');
+    showNotification(language === 'fr'
+      ? '⚠ Transcript vide — analyse IA ignorée'
+      : '⚠ Empty transcript — AI analysis skipped');
+    return;
+  }
 
   // Vérifier LMStudio — un retry après 4 s si indisponible
   await checkLmStudio();
@@ -1003,12 +1001,17 @@ async function finalAnalysis(fullText) {
   }
   if (!llmConnected) {
     console.warn('[finalAnalysis] LMStudio indisponible — analyse finale ignorée');
+    showNotification(language === 'fr'
+      ? '⚠ LMStudio non disponible — analyse IA ignorée, transcription sauvegardée'
+      : '⚠ LMStudio not available — AI analysis skipped, transcript saved');
     return;
   }
 
   // Tronquer le transcript pour ne pas dépasser la fenêtre de contexte du LLM.
-  // On garde le début (contexte/agenda) et la fin (conclusions/actions).
-  const MAX_TRANSCRIPT_CHARS = 10000;
+  // Budget token conservateur : system prompt ≈ 700 tokens, laisser ≥ 1500 pour la réponse.
+  // À 4096 tokens de contexte (LMStudio default) : 4096 - 700 (prompt) - 1500 (réponse) ≈ 1900 tokens input
+  // → ~5500 caractères max. On garde début + fin de la transcription.
+  const MAX_TRANSCRIPT_CHARS = 8000;
   let inputText = fullText;
   if (inputText.length > MAX_TRANSCRIPT_CHARS) {
     const half = MAX_TRANSCRIPT_CHARS / 2;
@@ -1017,6 +1020,7 @@ async function finalAnalysis(fullText) {
       + inputText.slice(-half);
     console.warn(`[finalAnalysis] Transcript tronqué : ${fullText.length} → ~${MAX_TRANSCRIPT_CHARS} chars`);
   }
+  console.log(`[finalAnalysis] Lancement — texte: ${inputText.length} chars`);
 
   // Sauvegarder l'analyse temps-réel comme fallback avant de réinitialiser
   const prevKeyPoints = [...keyPoints];
@@ -1049,9 +1053,14 @@ async function finalAnalysis(fullText) {
     const resp = await fetch(url + '/chat/completions', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer lm-studio' },
-      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, stream: false, max_tokens: 4096 }),
+      body:    JSON.stringify({ model: llmModelId, messages, temperature: 0.1, stream: false, max_tokens: 1500 }),
+      signal:  AbortSignal.timeout(180000),  // 3-min safety timeout — prevents infinite hang
     });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    console.log(`[finalAnalysis] Réponse LMStudio : HTTP ${resp.status}`);
+    if (!resp.ok) {
+      const errBody = await resp.text().catch(() => '');
+      throw new Error(`HTTP ${resp.status} — ${errBody.slice(0, 200)}`);
+    }
 
     const j   = await resp.json();
     const raw = j.choices?.[0]?.message?.content ?? '';
@@ -1060,27 +1069,31 @@ async function finalAnalysis(fullText) {
       console.warn('[finalAnalysis] finish_reason=length — réponse tronquée par le modèle (contexte trop court)');
     }
 
+    // Strip <think>…</think> blocks produced by reasoning models (e.g. ministral-reasoning)
+    // before attempting JSON extraction — they consume context and confuse all parsers.
+    const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+
     // Extraire le JSON — plusieurs stratégies par ordre de fiabilité
     let parsed = null;
 
     // 1. Parse direct (modèle bien cadré qui renvoie JSON pur)
-    try { parsed = JSON.parse(raw); } catch (_) {}
+    try { parsed = JSON.parse(stripped); } catch (_) {}
 
     // 2. Bloc markdown ```json ... ```
     if (!parsed) {
-      const mdMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const mdMatch = stripped.match(/```(?:json)?\s*([\s\S]*?)```/);
       if (mdMatch) try { parsed = JSON.parse(mdMatch[1]); } catch (_) {}
     }
 
     // 3. Extraction greedy : du premier { jusqu'au dernier } (JSON complet)
     if (!parsed) {
-      const m = raw.match(/\{[\s\S]*\}/);
+      const m = stripped.match(/\{[\s\S]*\}/);
       if (m) try { parsed = JSON.parse(m[0]); } catch (_) {}
     }
 
     // 4. Modèles reasoning : le dernier bloc JSON valide dans la réponse
     if (!parsed) {
-      const allMatches = [...raw.matchAll(/\{[\s\S]*?\}/gs)];
+      const allMatches = [...stripped.matchAll(/\{[\s\S]*?\}/gs)];
       for (let i = allMatches.length - 1; i >= 0; i--) {
         try { parsed = JSON.parse(allMatches[i][0]); break; } catch (_) {}
       }
@@ -1088,7 +1101,7 @@ async function finalAnalysis(fullText) {
 
     // 5. Réparation JSON tronqué : fermer les accolades/crochets ouverts
     if (!parsed) {
-      const start = raw.indexOf('{');
+      const start = stripped.indexOf('{');
       if (start !== -1) {
         let fragment = raw.slice(start);
         // Supprimer une éventuelle virgule finale avant de fermer
@@ -1111,6 +1124,7 @@ async function finalAnalysis(fullText) {
 
     if (!parsed) {
       console.error('[finalAnalysis] Réponse LLM brute (500 premiers chars) :', raw.slice(0, 500));
+      console.error('[finalAnalysis] Après strip <think> (500 premiers chars) :', stripped.slice(0, 500));
       throw new Error('Aucun JSON valide dans la réponse LLM');
     }
 
@@ -1479,8 +1493,7 @@ async function startFileTranscription(file) {
   document.getElementById('nav-record').classList.add('recording');
   btnStart.disabled  = true;
   btnStop.disabled   = false;
-  btnCsv.disabled    = true;
-  btnSrt.disabled    = true;
+  setExportBtns(true);
 
   // 5. Stream PCM chunks to WS (≈ 32× real-time)
   const CHUNK = 4096;
@@ -1521,6 +1534,48 @@ async function startRecording() {
   const sourceVal = document.getElementById('audio-source-select')?.value || 'mic:default';
   if (sourceVal === 'file') {
     document.getElementById('audio-file-input').click();
+    return;
+  }
+
+  // ── URL / web player source ───────────────────────────────────────────────
+  // Audio comes from the urlWindow preload (url-preload.js) via IPC.
+  // The preload taps the <video> element directly — no MediaStream/ScriptProcessor.
+  if (sourceVal === 'url') {
+    audioChunks        = [];
+    allPcmChunks       = [];
+    savedAudioPath     = '';
+    summaryText        = '';
+    nextStepsText      = '';
+    recordingStartTime = Date.now();
+
+    // Fresh AbortController so real-time LLM fetches can be cancelled later
+    _realtimeLLMCtrl = new AbortController();
+
+    // Force-close stale WS before creating a fresh server-side session
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
+    recording = true;
+    connectWS();
+
+    // Receive PCM chunks forwarded from urlWindow preload → main → renderer
+    window.electronAPI.onUrlAudioPcm((rawBuffer) => {
+      if (!recording) return;
+      // IPC delivers the buffer as Uint8Array in the renderer (context isolation).
+      // new Float32Array(uint8Array) would wrongly treat each *byte* as a float
+      // (N bytes → N floats instead of N/4 floats).  We must reinterpret the
+      // underlying bytes as IEEE 754 float32 by going through the ArrayBuffer.
+      const ab  = ArrayBuffer.isView(rawBuffer)
+        ? rawBuffer.buffer.slice(rawBuffer.byteOffset, rawBuffer.byteOffset + rawBuffer.byteLength)
+        : rawBuffer;
+      const pcm = new Float32Array(ab);
+      allPcmChunks.push(pcm);  // keep for post-recording re-transcription
+      if (ws && ws.readyState === WebSocket.OPEN) ws.send(rawBuffer);
+    });
+
+    setDot(dotMic, 'orange');
+    document.getElementById('nav-record').classList.add('recording');
+    btnStart.disabled = true;
+    btnStop.disabled  = false;
+    setExportBtns(true);
     return;
   }
 
@@ -1574,25 +1629,42 @@ async function startRecording() {
     mediaRecorder = null;
   }
 
+  // Force-close any leftover WS from the previous session before opening a new
+  // one.  connectWS() returns early when ws.readyState === OPEN, which would
+  // reuse the old server-side handler whose asr_thread has already been killed
+  // by the previous 'stop' message → audio received but never transcribed.
+  if (ws) {
+    ws.onclose = null;  // prevent the auto-reconnect loop from firing
+    ws.close();
+    ws = null;
+  }
+
+  // Fresh AbortController so real-time LLM fetches can be cancelled later
+  _realtimeLLMCtrl = new AbortController();
+
   recording = true;
   connectWS();
   setDot(dotMic, 'orange');
   document.getElementById('nav-record').classList.add('recording');
   btnStart.disabled = true;
   btnStop.disabled  = false;
-  btnCsv.disabled   = true;
-  btnSrt.disabled   = true;
+  setExportBtns(true);
 }
 
 async function handleMediaRecorderStop() {
   if (!audioChunks.length || currentMeetingId === null) return;
   try {
     const blob   = new Blob(audioChunks, { type: 'audio/webm' });
-    const buffer = await blob.arrayBuffer();
-    const bytes  = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-    const base64 = btoa(binary);
+    // Use FileReader.readAsDataURL — non-blocking async conversion to base64.
+    // The previous byte-by-byte loop was synchronous and froze the JS event loop
+    // for large recordings (tens of MB), preventing fetch responses from being
+    // processed (causing the final transcription to appear stuck on macOS).
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
     const result = await window.electronAPI.audio.save(currentMeetingId, base64);
     if (result && result.audioPath) savedAudioPath = result.audioPath;
   } catch (e) {
@@ -1612,6 +1684,9 @@ function stopRecording({ skipRetranscribe = false } = {}) {
   const pcmSnapshot = allPcmChunks.slice();
   allPcmChunks = [];
 
+  // Clean up URL audio IPC listener (url source path — no MediaStream/processor)
+  window.electronAPI.offUrlAudioPcm?.();
+
   if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
   if (processor)   { processor.disconnect(); processor = null; }
   if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
@@ -1620,6 +1695,10 @@ function stopRecording({ skipRetranscribe = false } = {}) {
 
   // Launch re-transcription unless caller asked to skip (e.g. resetAll)
   if (!skipRetranscribe && pcmSnapshot.length > 0) {
+    // Close the WS immediately: /transcribe-full will return the full transcript,
+    // so the WS final message is not needed. Closing now prevents any late WS
+    // messages from overwriting allSentences during re-transcription.
+    if (ws) { ws.onclose = null; ws.close(); ws = null; }
     isRetranscribing = true;
     retranscribeAndAnalyze(pcmSnapshot);  // fire-and-forget async
   }
@@ -1669,6 +1748,7 @@ function resetAll() {
   llmHistoryD      = [{ role: 'system', content: promptDiscovery() }];
   llmQueueD        = [];
   llmBusyD         = false;
+  _llmSharedBusy   = false;
 
   transcriptEl.value      = '';
   const tDisplay = document.getElementById('transcript-display');
@@ -1684,8 +1764,7 @@ function resetAll() {
   if (summaryCard) summaryCard.classList.add('hidden');
   const summaryContent = document.getElementById('summary-content');
   if (summaryContent) summaryContent.innerHTML = '';
-  btnCsv.disabled         = true;
-  btnSrt.disabled         = true;
+  setExportBtns(true);
   setDot(dotMic, 'red');
 }
 
@@ -1717,11 +1796,19 @@ function ts() {
 }
 
 function buildCSV() {
-  const rows = ['Index,Start (s),End (s),Segment'];
-  allSentences.forEach((s, i) =>
-    rows.push(`${i + 1},${s.start},${s.end},"${s.segment.replace(/"/g, '""')}"`)
-  );
+  const rows = ['Index,Speaker,Start (s),End (s),Segment'];
+  allSentences.forEach((s, i) => {
+    const spk = s.speaker ? getDisplayName(s.speaker) : '';
+    rows.push(`${i + 1},"${spk.replace(/"/g, '""')}",${s.start},${s.end},"${s.segment.replace(/"/g, '""')}"`);
+  });
   return rows.join('\r\n');
+}
+
+function buildTXT() {
+  return allSentences.map(s => {
+    const spk = s.speaker ? getDisplayName(s.speaker) : null;
+    return spk ? `[${spk}] ${s.segment}` : s.segment;
+  }).join('\n');
 }
 
 function fmtSRT(sec) {
@@ -1814,6 +1901,26 @@ function completeProgress(pct = 100) {
   _setProgress(pct);
 }
 
+// ─── PCM → WAV encoder ────────────────────────────────────────────────────────
+function pcmToWav(f32, sampleRate = 16000) {
+  const dataLen = f32.length * 2; // 16-bit mono = 2 bytes/sample
+  const buf = new ArrayBuffer(44 + dataLen);
+  const v = new DataView(buf);
+  const str = (off, s) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); v.setUint32(4, 36 + dataLen, true);
+  str(8, 'WAVE'); str(12, 'fmt '); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true);       // PCM, mono
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);       // blockAlign, bitsPerSample
+  str(36, 'data'); v.setUint32(40, dataLen, true);
+  let off = 44;
+  for (let i = 0; i < f32.length; i++) {
+    v.setInt16(off, Math.max(-32768, Math.min(32767, f32[i] * 32767 | 0)), true);
+    off += 2;
+  }
+  return buf;
+}
+
 // ─── Post-recording re-transcription & analysis ───────────────────────────────
 async function retranscribeAndAnalyze(chunks) {
   retranscribeAbortCtrl = new AbortController();
@@ -1832,6 +1939,26 @@ async function retranscribeAndAnalyze(chunks) {
     const combined = new Float32Array(totalSamples);
     let offset = 0;
     for (const c of chunks) { combined.set(c, offset); offset += c.length; }
+    console.log(`[retranscribe] PCM snapshot: ${chunks.length} chunks, ${totalSamples} samples (${(totalSamples/16000).toFixed(1)}s), allSentences avant fetch: ${allSentences.length}`);
+
+    // Save WAV audio before transcription — works for both mic and URL capture.
+    // Uses the same PCM data sent to /transcribe-full, so audio and transcript always match.
+    if (currentMeetingId !== null && !savedAudioPath) {
+      try {
+        const wavBuf    = pcmToWav(combined);
+        const wavBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload  = () => resolve(reader.result.split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(new Blob([wavBuf], { type: 'audio/wav' }));
+        });
+        const ar = await window.electronAPI.audio.save(currentMeetingId, wavBase64, 'recording.wav');
+        if (ar?.audioPath) savedAudioPath = ar.audioPath;
+        console.log(`[retranscribe] Audio WAV sauvegardé : ${savedAudioPath}`);
+      } catch (e) {
+        console.error('[retranscribe] Audio WAV save failed:', e);
+      }
+    }
 
     // POST raw PCM to the server for a clean full transcription
     const resp = await fetch(RETRANSCRIBE_URL, {
@@ -1846,35 +1973,59 @@ async function retranscribeAndAnalyze(chunks) {
 
     const result = await resp.json();
     if (!isRetranscribing) return;
+    console.log(`[retranscribe] /transcribe-full → sentences: ${result.sentences?.length ?? 'N/A'}, fullText: ${result.fullText?.length ?? 0} chars`);
 
     completeProgress(100);
 
-    // Replace real-time transcription with the clean re-transcription
-    allSentences = result.sentences || [];
-    transcriptEl.value = result.fullText || '';
-    renderTranscriptDisplay();
-    renderSpeakersPanel();
-    renderTimestamps();
-    btnCsv.disabled = allSentences.length === 0;
-    btnSrt.disabled = allSentences.length === 0;
+    // Replace real-time transcription with the clean re-transcription.
+    // Fall back to the real-time sentences if the server returned nothing
+    // (e.g. corrupt PCM — avoids overwriting good data with an empty array).
+    if (result.sentences && result.sentences.length > 0) {
+      allSentences = result.sentences;
+      transcriptEl.value = result.fullText || '';
+      renderTranscriptDisplay();
+      renderSpeakersPanel();
+      renderTimestamps();
+    }
+    setExportBtns(allSentences.length === 0);
 
-    const speakerText = buildSpeakerText(allSentences) || result.fullText || '';
+    const speakerText = buildSpeakerText(allSentences) || result.fullText || transcriptEl.value || '';
+    console.log(`[retranscribe] speakerText: ${speakerText.length} chars, allSentences: ${allSentences.length}, transcriptEl: ${transcriptEl.value.length} chars`);
 
-    // Flush real-time LLM queues — final analysis takes priority
+    // Early save: persist the clean transcript immediately so data is never lost
+    // even if finalAnalysis fails or LMStudio is unavailable.
+    // At this point keyPoints/questions/actions still hold the real-time analysis values,
+    // so the save is meaningful even before the final analysis runs.
+    if (currentMeetingId !== null) {
+      try { await autoSave(); } catch (_) {}
+    }
+
+    // Flush real-time LLM queues and abort any in-flight streaming requests
+    // so the final analysis gets exclusive access to LMStudio's KV cache.
+    // The AbortError thrown inside each processor sets llmBusyX = false,
+    // so waitForQueues() resolves quickly (no 120-second spin).
     llmQueueK   = [];
     llmQueueQ   = [];
     llmQueueAns = [];
-    await waitForQueues();
-    if (!isRetranscribing) return;
+    llmQueueD   = [];
+    _realtimeLLMCtrl.abort();
+    _realtimeLLMCtrl = new AbortController();   // fresh controller for future recordings
+    _llmSharedBusy   = false;                   // released by AbortError catch blocks, but reset here as safety net
+    console.log('[retranscribe] Attente fin queues LLM temps-réel…');
+    await waitForQueues(15000);
+    console.log('[retranscribe] Queues inactives → lancement analyse finale');
 
     // Run single-call LLM analysis on the clean transcription
     updateProcessingOverlay(msgAnalyzing);
     startProgressSimulation(0, 90);
+    // Small delay so the overlay message is visible before finalAnalysis fires
+    await new Promise(r => setTimeout(r, 300));
     await finalAnalysis(speakerText);
-    if (!isRetranscribing) return;
     completeProgress(100);
 
-    // Persist to DB
+    // Persist to DB — always save after analysis, regardless of isRetranscribing.
+    // autoSave() already guards against null meetingId; the isRetranscribing check
+    // here was causing silent data loss when reset() raced against a long LLM call.
     updateProcessingOverlay(msgSaving);
     if (currentMeetingId !== null) await autoSave();
 
@@ -1882,6 +2033,8 @@ async function retranscribeAndAnalyze(chunks) {
     if (signal.aborted) return;
     console.error('[retranscribe]', e);
     showNotification('⚠ Re-transcription error: ' + e.message);
+    // Save whatever real-time data we have, even if re-transcription or analysis failed.
+    if (currentMeetingId !== null) try { await autoSave(); } catch (_) {}
   } finally {
     isRetranscribing      = false;
     retranscribeAbortCtrl = null;
@@ -1899,6 +2052,9 @@ btnCsv.addEventListener('click', () =>
 );
 btnSrt.addEventListener('click', () =>
   exportFile(buildSRT(), `transcription_${ts()}.srt`, [{ name: 'SRT', extensions: ['srt'] }])
+);
+if (btnTxt) btnTxt.addEventListener('click', () =>
+  exportFile(buildTXT(), `transcript_${ts()}.txt`, [{ name: 'Text', extensions: ['txt'] }])
 );
 
 urlInput.addEventListener('change', () => {
@@ -1977,12 +2133,11 @@ document.getElementById('btn-open-url').addEventListener('click', async () => {
 
   if (window.electronAPI?.webview) {
     await window.electronAPI.webview.open(url);
-    // Automatically switch to system audio
-    const sel = document.getElementById('audio-source-select');
-    if ([...sel.options].some(o => o.value === 'system')) {
-      sel.value = 'system';
-      document.getElementById('url-source-row').classList.add('hidden');
-    }
+    // Keep source as 'url' — audio is captured directly from the web player
+    // window via IPC (url-preload.js taps the <video> element).
+    // Do NOT switch to 'system': macOS system audio capture cannot intercept
+    // audio from Electron windows without a virtual loopback device.
+    document.getElementById('url-source-row').classList.add('hidden');
   } else {
     window.open(url, '_blank');
   }

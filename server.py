@@ -12,9 +12,16 @@ import time
 import warnings
 import wave
 
-# Suppress harmless torchcodec/FFmpeg warning (pyannote falls back to tensor I/O).
-# The message starts with '\n' so we filter by module instead of message text.
+# Suppress harmless warnings from pyannote / Lightning at model load time.
 warnings.filterwarnings('ignore', category=UserWarning, module=r'pyannote\.audio\.core\.io')
+# Lightning auto-upgrade message (checkpoint v1 → v2)
+warnings.filterwarnings('ignore', message=r'.*Lightning automatically upgraded.*')
+# pyannote embedding model loaded without its task-dependent loss
+warnings.filterwarnings('ignore', message=r'.*task-dependent loss function.*')
+# Lightning reports loss_func.W not in model state dict — expected for inference-only load
+warnings.filterwarnings('ignore', message=r'.*keys that are not in the model state dict.*')
+# Lightning redirects legacy pytorch_lightning imports to lightning.pytorch — harmless migration shim
+warnings.filterwarnings('ignore', message=r'.*Redirecting import of pytorch_lightning.*')
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -48,7 +55,7 @@ from fastapi.responses import JSONResponse
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 SAMPLE_RATE   = 16000
-CHUNK_SECONDS = 5   # more context per inference → better accuracy
+CHUNK_SECONDS = 3   # shorter chunks → more frequent real-time updates
 
 # Diarization tuning — overridable via .env
 # DIAR_MATCH_THRESHOLD : cosine similarity required to match a new embedding to an
@@ -62,8 +69,8 @@ CHUNK_SECONDS = 5   # more context per inference → better accuracy
 #   extracted.  Very short segments produce noisy embeddings; 1.0 s is a safe floor.
 # DIAR_CONTEXT_S : seconds of audio kept as preroll from the previous chunk and
 #   prepended to each new diarization window to provide cross-chunk speaker context.
-DIAR_MATCH_THRESHOLD = float(os.environ.get('DIAR_MATCH_THRESHOLD', '0.25'))
-DIAR_MERGE_THRESHOLD = float(os.environ.get('DIAR_MERGE_THRESHOLD', '0.70'))
+DIAR_MATCH_THRESHOLD = float(os.environ.get('DIAR_MATCH_THRESHOLD', '0.45'))
+DIAR_MERGE_THRESHOLD = float(os.environ.get('DIAR_MERGE_THRESHOLD', '0.65'))
 DIAR_MIN_SEGMENT_S   = float(os.environ.get('DIAR_MIN_SEGMENT_S',   '1.0'))
 DIAR_CONTEXT_S       = float(os.environ.get('DIAR_CONTEXT_S',       '2.0'))
 
@@ -104,7 +111,10 @@ if BACKEND == 'mlx':
                 break
             try:
                 box['result'] = fn(*args, **kwargs)
-            except Exception as exc:
+            except BaseException as exc:
+                # Catch ALL exceptions (including Metal/GPU internal errors)
+                # so the thread never exits the loop and future _mlx_call()s
+                # don't block forever on event.wait().
                 box['error'] = exc
             finally:
                 done_event.set()
@@ -151,9 +161,10 @@ _diar_pipeline   = None
 _diar_lock       = threading.Lock()
 _diarization_on  = False
 _embedding_model = None
+_diar_on_gpu     = False   # True only when pyannote runs on CUDA (Windows/RTX)
 
 def load_diarization():
-    global _diar_pipeline, _diarization_on, _embedding_model
+    global _diar_pipeline, _diarization_on, _embedding_model, _diar_on_gpu
     hf_token = os.environ.get('HF_TOKEN', '').strip()
     if not hf_token:
         print("[diarization] HF_TOKEN missing — diarization disabled.")
@@ -180,6 +191,7 @@ def load_diarization():
             _diar_pipeline   = pipe
             _embedding_model = emb
             _diarization_on  = True
+            _diar_on_gpu     = (device.type == 'cuda')
         print(f"[diarization] Pipeline ready ({device}).")
     except Exception as e:
         import traceback
@@ -449,7 +461,22 @@ def _transcribe_onnx(audio_float32, time_offset):
     if not out.tokens:
         return [], '', 0.0
     raw_sents = convert_to_sentence_timestamps(out.timestamps, out.tokens)
-    last_end  = float(raw_sents[-1]['end']) if raw_sents else 0.0
+    if not raw_sents:
+        # No punctuation → no sentence boundaries detected.
+        # Create one synthetic sentence spanning the full chunk so timestamps
+        # and diarization still work (same fallback as the MLX backend).
+        text    = ''.join(out.tokens).strip()
+        last_ts = float(out.timestamps[-1]) if out.timestamps else 0.0
+        if text:
+            return (
+                [{'start': f"{time_offset:.2f}",
+                  'end':   f"{time_offset + last_ts:.2f}",
+                  'segment': text}],
+                text,
+                last_ts,
+            )
+        return [], ''.join(out.tokens), 0.0
+    last_end  = float(raw_sents[-1]['end'])
     sentences = [
         {
             'start':   f"{float(s['start']) + time_offset:.2f}",
@@ -483,7 +510,19 @@ def _transcribe_mlx(audio_float32, time_offset):
         os.unlink(tmp)
 
     if not result.sentences:
-        return [], result.text or '', 0.0
+        # parakeet found speech but no sentence boundaries (no punctuation).
+        # Create one synthetic sentence spanning the full audio chunk so that
+        # timestamps and diarization still work downstream.
+        if result.text:
+            duration = len(audio_float32) / SAMPLE_RATE
+            return (
+                [{'start': f"{time_offset:.2f}",
+                  'end':   f"{time_offset + duration:.2f}",
+                  'segment': result.text}],
+                result.text,
+                duration,
+            )
+        return [], '', 0.0
     sentences = [
         {
             'start':   f"{s.start + time_offset:.2f}",
@@ -535,7 +574,16 @@ def asr_worker(audio_q, result_q, stop_event, num_speakers_ref=None, diar_pool=N
         min_samples = CHUNK_SECONDS * SAMPLE_RATE
         if len(buffer) >= min_samples:
             chunk = buffer[:min_samples]
-            sents, text, last_end = _transcribe(chunk, time_offset)
+            try:
+                sents, text, last_end = _transcribe(chunk, time_offset)
+            except Exception as exc:
+                # Transcription error (e.g. Metal GPU crash, bad audio) — log and
+                # skip this chunk rather than killing the asr_worker thread.
+                print(f"[asr_worker] _transcribe error (chunk skipped): {exc}")
+                diar_context = np.concatenate([diar_context, chunk])[-DIAR_CTX_SAMPLES:]
+                buffer = buffer[min_samples:]
+                time_offset += CHUNK_SECONDS
+                continue
             ns = num_speakers_ref[0] if num_speakers_ref else None
 
             # ── Send ASR result immediately — do NOT wait for diarization ──────
@@ -578,13 +626,22 @@ def _asr_flush(buffer, time_offset, result_q, num_speakers_ref=None, diar_contex
         ns = num_speakers_ref[0] if num_speakers_ref else None
         merge_map = {}
         if sents:
-            if diar_context is not None and len(diar_context) > 0:
-                diar_audio  = np.concatenate([diar_context, buffer])
-                diar_offset = time_offset - len(diar_context) / SAMPLE_RATE
+            if _diar_on_gpu:
+                # GPU diarization (Windows/RTX): fast enough to run synchronously
+                if diar_context is not None and len(diar_context) > 0:
+                    diar_audio  = np.concatenate([diar_context, buffer])
+                    diar_offset = time_offset - len(diar_context) / SAMPLE_RATE
+                else:
+                    diar_audio  = buffer
+                    diar_offset = time_offset
+                merge_map = diarize_chunk(diar_audio, diar_offset, sents, ns) or {}
             else:
-                diar_audio  = buffer
-                diar_offset = time_offset
-            merge_map = diarize_chunk(diar_audio, diar_offset, sents, ns) or {}
+                # CPU diarization (macOS): skip synchronous call in flush — it
+                # would block the WS stop handler for 30-120 s per chunk.
+                # /transcribe-full will run a single-pass diarization on the
+                # full audio instead.
+                for s in sents:
+                    s.setdefault('speaker', None)
         if sents or text:
             result_q.put({'sentences': sents, 'text': text, 'final': True, 'merge_map': merge_map})
 
@@ -644,15 +701,11 @@ async def transcribe_full(request: Request):
         time_offset   = 0.0
         buffer        = audio.copy()
 
+        # ── Phase 1 : transcription only (fast — MLX/GPU) ───────────────────
         while len(buffer) >= chunk_size:
             chunk = buffer[:chunk_size]
             sents, text, last_end = _transcribe(chunk, time_offset)
             if sents:
-                merge_map = diarize_chunk(chunk, time_offset, sents) or {}
-                if merge_map:
-                    for s in all_sentences:
-                        if s.get('speaker') in merge_map:
-                            s['speaker'] = merge_map[s['speaker']]
                 all_sentences.extend(sents)
             if text:
                 full_text += (' ' if full_text else '') + text
@@ -668,14 +721,21 @@ async def transcribe_full(request: Request):
         if len(buffer) >= SAMPLE_RATE // 2:
             sents, text, _ = _transcribe(buffer, time_offset)
             if sents:
-                merge_map = diarize_chunk(buffer, time_offset, sents) or {}
-                if merge_map:
-                    for s in all_sentences:
-                        if s.get('speaker') in merge_map:
-                            s['speaker'] = merge_map[s['speaker']]
                 all_sentences.extend(sents)
             if text:
                 full_text += (' ' if full_text else '') + text
+
+        # ── Phase 2 : single-pass diarization on the full audio ─────────────
+        # Running pyannote once on the whole recording is both faster and more
+        # accurate than calling it for every chunk (no cold-start, full context).
+        # On macOS (CPU), skip diarization here — it would time out the HTTP
+        # request on long recordings.  The client can run /transcribe-full
+        # without speaker labels on macOS, which is fast enough to be usable.
+        if all_sentences and _diarization_on and _diar_on_gpu:
+            diarize_chunk(audio, 0.0, all_sentences)
+        else:
+            for s in all_sentences:
+                s.setdefault('speaker', None)
 
         return all_sentences, full_text
 
@@ -748,7 +808,12 @@ async def ws_transcribe(websocket: WebSocket):
                     'sentences': all_sentences,
                     'fullText':  full_text,
                 }
-                await websocket.send_text(json.dumps(payload))
+                try:
+                    await websocket.send_text(json.dumps(payload))
+                except Exception as send_err:
+                    # Client disconnected or WS closed — stop sending silently.
+                    print(f"[result_sender] WebSocket send failed: {send_err}")
+                    return
 
     sender_task = asyncio.create_task(result_sender())
 
@@ -764,7 +829,10 @@ async def ws_transcribe(websocket: WebSocket):
                     sample_rate = int(data.get('sampleRate', SAMPLE_RATE))
                     ns = data.get('numSpeakers')
                     if ns is not None:
-                        num_speakers_ref[0] = int(ns)
+                        nsv = int(ns)
+                        # 2 is the UI default and means "auto-detect".
+                        # Only constrain pyannote when the user explicitly chose > 2.
+                        num_speakers_ref[0] = nsv if nsv > 2 else None
                 elif data.get('type') == 'stop':
                     # End signal: flush and wait for the thread
                     audio_q.put(None)
@@ -772,10 +840,13 @@ async def ws_transcribe(websocket: WebSocket):
                     await asyncio.get_event_loop().run_in_executor(
                         None, lambda: asr_thread.join(timeout=60)
                     )
-                    # Cancel pending diarization tasks, wait for the running one.
-                    # This ensures /transcribe-full gets exclusive pipeline access.
+                    # Cancel pending diarization tasks.
+                    # On GPU (Windows/RTX): wait for the running task to finish
+                    # so /transcribe-full gets exclusive pipeline access.
+                    # On CPU (macOS): don't wait — CPU diarization can take
+                    # 30-120 s per chunk and would block the stop flow.
                     await asyncio.get_event_loop().run_in_executor(
-                        None, lambda: _shutdown_pool(diar_pool)
+                        None, lambda: _shutdown_pool(diar_pool, wait=_diar_on_gpu)
                     )
                     # Send any remaining final result
                     while not asr_rq.empty():

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, desktopCapturer, nativeImage, shell, systemPreferences } = require('electron');
 const path  = require('path');
 const fs    = require('fs');
 const http  = require('http');
@@ -102,7 +102,14 @@ function createWindow() {
     callback(false);
   });
 
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    // If the YouTube/URL window is still open, close it so window-all-closed fires
+    // and the Python ASR server is properly terminated.
+    if (urlWindow && !urlWindow.isDestroyed()) {
+      urlWindow.close();
+    }
+  });
 }
 
 // ─── Document generators ──────────────────────────────────────────────────────
@@ -446,11 +453,11 @@ ipcMain.handle('db:get-company-analysis',  (_e, { id })       => db.getCompanyAn
 ipcMain.handle('db:save-email-recap',      (_e, { meetingId, text }) => db.saveEmailRecap(meetingId, text));
 
 // ─── IPC : audio:save ────────────────────────────────────────────────────────
-ipcMain.handle('audio:save', (_e, { meetingId, dataBase64 }) => {
+ipcMain.handle('audio:save', (_e, { meetingId, dataBase64, filename = 'recording.webm' }) => {
   const dataDir  = path.join(app.getPath('userData'), 'parakeet-data');
   const audioDir = path.join(dataDir, 'audio', String(meetingId));
   fs.mkdirSync(audioDir, { recursive: true });
-  const audioPath = path.join(audioDir, 'recording.webm');
+  const audioPath = path.join(audioDir, filename);
   const buf = Buffer.from(dataBase64, 'base64');
   fs.writeFileSync(audioPath, buf);
   return { audioPath };
@@ -470,10 +477,24 @@ ipcMain.handle('open-url-window', async (_e, url) => {
     width:  960,
     height: 640,
     title:  'Echo2Text – Web Player',
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration:  false,
+      contextIsolation: true,
+      // webSecurity:false lets createMediaElementSource() work for cross-origin
+      // video sources (e.g. YouTube videos served from googlevideo.com).
+      webSecurity: false,
+      preload: path.join(__dirname, 'url-preload.js'),
+    },
   });
   urlWindow.loadURL(url);
   urlWindow.on('closed', () => { urlWindow = null; });
+});
+
+// Forward PCM audio from urlWindow preload → main renderer
+ipcMain.on('url-audio-pcm', (_event, buffer) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('url-audio-pcm', buffer);
+  }
 });
 
 ipcMain.handle('close-url-window', () => {
@@ -483,12 +504,47 @@ ipcMain.handle('close-url-window', () => {
 
 // ─── IPC : desktop-capturer ───────────────────────────────────────────────────
 ipcMain.handle('desktop-capturer:get-sources', async () => {
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: 0, height: 0 },
-  });
-  return sources.map(s => ({ id: s.id, name: s.name }));
+  try {
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: 0, height: 0 },
+    });
+    return sources.map(s => ({ id: s.id, name: s.name }));
+  } catch (err) {
+    // On macOS, screen recording permission may be missing.
+    // Open System Preferences directly to the Screen Recording section.
+    if (process.platform === 'darwin') {
+      const status = systemPreferences.getMediaAccessStatus('screen');
+      if (status !== 'granted') {
+        const { response } = await dialog.showMessageBox(mainWindow, {
+          type:    'warning',
+          title:   'Screen Recording Permission Required',
+          message: 'Echo2Text needs Screen Recording access to capture system audio.',
+          detail:  'Click "Open Privacy Settings", then enable "Electron" (or "Echo2Text") in the Screen Recording list. Restart the app after granting access.',
+          buttons: ['Open Privacy Settings', 'Cancel'],
+          defaultId: 0,
+          cancelId:  1,
+        });
+        if (response === 0) {
+          shell.openExternal(
+            'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
+          );
+        }
+        return [];
+      }
+    }
+    throw err;
+  }
 });
+
+// ─── macOS Chromium flags ─────────────────────────────────────────────────────
+// Electron 40 / Chromium 134 on macOS fails to wrap GPU SharedImages as
+// VideoFrames when using desktopCapturer (system audio path).  The audio track
+// is unaffected, but the error spam fills logs.  Falling back to the legacy
+// video-capture backend suppresses the errors.
+if (process.platform === 'darwin') {
+  app.commandLine.appendSwitch('disable-features', 'VideoCaptureMacV2');
+}
 
 // ─── App lifecycle ────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
