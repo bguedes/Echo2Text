@@ -1048,7 +1048,7 @@ async function finalAnalysis(fullText) {
   keyPoints = []; renderKeyPoints();
   questions = []; llmQueueAns = []; renderQuestions();
   actions   = []; renderActions();
-  actionsList.innerHTML = `<div class="detecting">${language === 'fr' ? 'Analyse finale en cours…' : 'Running final analysis…'}</div>`;
+  if (actionsList) actionsList.innerHTML = `<div class="detecting">${language === 'fr' ? 'Analyse finale en cours…' : 'Running final analysis…'}</div>`;
 
   const card    = document.getElementById('summary-card');
   const content = document.getElementById('summary-content');
@@ -1159,7 +1159,7 @@ async function finalAnalysis(fullText) {
     actions = (parsed.actions || []).filter(s => typeof s === 'string' && s.trim());
     renderActions();
     if (actions.length === 0) {
-      actionsList.innerHTML = `<div class="detecting muted">${language === 'fr' ? 'Aucune action détectée' : 'No actions detected'}</div>`;
+      if (actionsList) actionsList.innerHTML = `<div class="detecting muted">${language === 'fr' ? 'Aucune action détectée' : 'No actions detected'}</div>`;
     }
 
     // Questions de découverte (pour le prochain échange)
@@ -1187,7 +1187,7 @@ async function finalAnalysis(fullText) {
     const hint = finishReason === 'length'
       ? (language === 'fr' ? ' (contexte LLM trop court — réponse tronquée)' : ' (LLM context too short — response truncated)')
       : '';
-    actionsList.innerHTML = `<div class="detecting muted">Analysis error: ${e.message}${hint}</div>`;
+    if (actionsList) actionsList.innerHTML = `<div class="detecting muted">Analysis error: ${e.message}${hint}</div>`;
     showNotification('⚠ Analyse finale échouée — données temps-réel conservées');
   }
 }
@@ -1334,6 +1334,7 @@ function renderQuestions() {
 }
 
 function renderActions() {
+  if (!actionsList) return;
   actionsList.innerHTML = actions.map((t, i) => `
     <div class="list-item">
       <span class="list-idx">${i + 1}</span>
@@ -1776,7 +1777,7 @@ function resetAll() {
   }
   if (keypointsList) keypointsList.innerHTML = '';
   questionsList.innerHTML = '';
-  actionsList.innerHTML   = '';
+  if (actionsList) actionsList.innerHTML = '';
   if (discoveryList) discoveryList.innerHTML = '';
   tsBody.innerHTML        = '';
   const summaryCard = document.getElementById('summary-card');
