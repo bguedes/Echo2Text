@@ -17,11 +17,55 @@ function buildMeetingTXT(m) {
   }).join('\n');
 }
 
+function _spkIdx(speaker) {
+  if (speaker == null) return -1;
+  if (typeof speaker === 'number') return speaker;
+  const m = String(speaker).match(/(\d+)$/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
 function _spkName(speaker, speakerNames) {
-  if (speaker == null) return '';
+  if (speaker == null) return null;
   const key = String(speaker);
   if (speakerNames?.[key]) return speakerNames[key];
-  return typeof speaker === 'number' ? `Speaker ${speaker + 1}` : String(speaker);
+  const idx = _spkIdx(speaker);
+  return idx >= 0 ? `Speaker ${idx + 1}` : key;
+}
+
+// ─── Global tooltip (avoids overflow:hidden clipping) ─────────────────────────
+const _tip = document.createElement('div');
+_tip.id = 'global-tooltip';
+document.body.appendChild(_tip);
+
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) return;
+  _tip.textContent = el.dataset.tip;
+  _tip.classList.add('visible');
+  _positionTip(el);
+});
+document.addEventListener('mouseout', e => {
+  if (!e.target.closest('[data-tip]')) return;
+  _tip.classList.remove('visible');
+});
+function _positionTip(el) {
+  const r = el.getBoundingClientRect();
+  const tw = 220, margin = 8;
+  let left = r.right - tw;
+  if (left < margin) left = margin;
+  if (left + tw > window.innerWidth - margin) left = window.innerWidth - tw - margin;
+  // Prefer below; if not enough room flip above
+  const spaceBelow = window.innerHeight - r.bottom;
+  if (spaceBelow >= 60) {
+    _tip.style.top  = (r.bottom + 4) + 'px';
+    _tip.style.left = left + 'px';
+  } else {
+    _tip.style.top  = (r.top - 4) + 'px';
+    _tip.style.left = left + 'px';
+    _tip.style.transform = 'translateY(-100%)';
+    return;
+  }
+  _tip.style.transform = '';
 }
 
 // ─── Library state ────────────────────────────────────────────────────────────
@@ -313,8 +357,8 @@ function renderMeetingDetail(m) {
     }
     pTranscript = `<div class="detail-transcript-body">
       ${turns.map(turn => {
-        const idx  = typeof turn.speaker === 'number' ? turn.speaker : -1;
-        const name = speakerNames[turn.speaker] || (idx >= 0 ? `Speaker ${idx + 1}` : null);
+        const idx  = _spkIdx(turn.speaker);
+        const name = _spkName(turn.speaker, speakerNames);
         const badge = name ? `<span class="speaker-badge ${COLORS[idx % COLORS.length] || ''}">${escHtml(name)}</span>` : '';
         return `<div class="speaker-turn">${badge}<div class="speaker-segment">${escHtml(turn.segs.join(' '))}</div></div>`;
       }).join('')}
@@ -326,8 +370,8 @@ function renderMeetingDetail(m) {
   if (m.sentences && m.sentences.length) {
     pSegments = `<div class="detail-segments-list">
       ${m.sentences.map(s => {
-        const idx  = typeof s.speaker === 'number' ? s.speaker : -1;
-        const name = speakerNames[s.speaker] || (idx >= 0 ? `Spk ${idx + 1}` : null);
+        const idx  = _spkIdx(s.speaker);
+        const name = _spkName(s.speaker, speakerNames);
         const badge = name ? `<span class="speaker-badge speaker-badge-xs ${COLORS[idx % COLORS.length] || ''}">${escHtml(name)}</span>` : '';
         return `<div class="detail-seg-row">
           <span class="detail-seg-ts">${Number(s.start_time).toFixed(1)}s</span>
@@ -347,11 +391,27 @@ function renderMeetingDetail(m) {
         ${m.description ? `<div class="detail-desc">${escHtml(m.description)}</div>` : ''}
       </div>
       <div class="md-header-actions">
-        <button class="btn-export-pdf" data-id="${m.id}" title="Export as PDF">↓ PDF</button>
-        <button class="btn-export-gdoc" data-id="${m.id}" title="Export document (format configurable in Settings)">↑ Export Doc</button>
-        <button class="btn-export-csv" title="Export transcript as CSV (with speaker labels)">↓ CSV</button>
-        <button class="btn-export-txt" title="Export transcript as plain text (with speaker labels)">↓ Transcript</button>
-        <button class="btn-delete-meeting btn-danger" data-id="${m.id}">${_t('detail.delete_btn')}</button>
+        <div class="md-export-row">
+          <div class="export-btn-wrap">
+            <button class="btn-export-pdf" data-id="${m.id}">↓ PDF</button>
+            <span class="btn-help" data-tip="Export this meeting as a formatted PDF file (summary, action items, transcript)">?</span>
+          </div>
+          <div class="export-btn-wrap">
+            <button class="btn-export-gdoc" data-id="${m.id}">↑ Doc</button>
+            <span class="btn-help" data-tip="Export as Word (.docx) or Google Doc — format configurable in Settings">?</span>
+          </div>
+          <div class="export-btn-wrap">
+            <button class="btn-export-csv">↓ CSV</button>
+            <span class="btn-help" data-tip="Export transcript as spreadsheet (CSV) with speaker labels, timestamps and segments">?</span>
+          </div>
+          <div class="export-btn-wrap">
+            <button class="btn-export-txt">↓ Transcript</button>
+            <span class="btn-help" data-tip="Export raw transcript as plain text with speaker labels — useful for external processing">?</span>
+          </div>
+        </div>
+        <div class="md-actions-delete-row">
+          <button class="btn-delete-meeting btn-danger" data-id="${m.id}">${_t('detail.delete_btn')}</button>
+        </div>
       </div>
     </div>
 

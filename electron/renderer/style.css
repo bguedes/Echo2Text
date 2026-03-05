@@ -723,11 +723,6 @@ button:focus-visible {
 .discovery-item:hover .btn-delete-item { opacity: 1; }
 .btn-copy-discovery:hover { background: var(--discovery-bg); }
 
-.discovery-badge {
-  color: var(--discovery) !important;
-  background: var(--discovery-bg) !important;
-  border-color: var(--discovery-border) !important;
-}
 
 /* ─── Inline delete buttons ─────────────────────────────────────────────────── */
 .btn-delete-item {
@@ -1230,13 +1225,32 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
 .md-header-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   flex-shrink: 0;
   align-items: flex-end;
 }
 
+/* Export buttons row */
+.md-export-row {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Each export button + its ? badge */
+.export-btn-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .btn-export-pdf,
-.btn-export-gdoc {
+.btn-export-gdoc,
+.btn-export-csv,
+.btn-export-txt {
   flex-shrink: 0;
   padding: 5px 11px;
   border-radius: var(--radius-sm);
@@ -1249,8 +1263,57 @@ tbody td:last-child { width: 28px; text-align: center; padding: 0 4px; }
   transition: background 0.12s, color 0.12s, border-color 0.12s;
   white-space: nowrap;
 }
-.btn-export-pdf:hover   { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); }
-.btn-export-gdoc:hover  { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); }
+.btn-export-pdf:hover,
+.btn-export-gdoc:hover,
+.btn-export-csv:hover,
+.btn-export-txt:hover  { background: var(--accent-bg); border-color: var(--accent-border); color: var(--accent); }
+
+/* ? tooltip badge */
+.btn-help {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-alt);
+  color: var(--text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  cursor: help;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.btn-help:hover { border-color: var(--accent-border); color: var(--accent); }
+/* Tooltip is rendered via JS as #global-tooltip — see library.js */
+#global-tooltip {
+  position: fixed;
+  min-width: 160px;
+  max-width: 220px;
+  background: var(--surface-alt);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 9999;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
+#global-tooltip.visible { opacity: 1; }
+
+/* Separator between export group and delete */
+.md-actions-delete-row {
+  display: flex;
+  justify-content: flex-end;
+}
 
 .md-audio {
   padding: 10px 20px;

@@ -616,21 +616,36 @@ function renderSpeakersPanel() {
   if (!panel) return;
   if (!detected.length) { panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
-  panel.querySelector('#speakers-list').innerHTML = detected.map(spk => `
-    <div class="speaker-row">
-      <span class="speaker-badge spk-color-${getSpeakerIndex(spk) % 6}">${toFriendlyLabel(spk)}</span>
-      <input class="speaker-name-input" data-spk="${spk}" type="text"
-        placeholder="${toFriendlyLabel(spk)}" value="${escHtml(speakerNames[spk] || '')}" />
-    </div>
-  `).join('');
-  panel.querySelectorAll('.speaker-name-input').forEach(inp => {
+
+  const list = panel.querySelector('#speakers-list');
+  if (!list) return;
+
+  // Only append rows for speakers not yet in the DOM.
+  // Existing rows are NEVER touched — this preserves focus, cursor, and typed text
+  // even as new transcript lines arrive on every WS message.
+  const existing = new Set([...list.querySelectorAll('[data-spk]')].map(el => el.dataset.spk));
+  detected.filter(spk => !existing.has(spk)).forEach(spk => {
+    const row = document.createElement('div');
+    row.className = 'speaker-row';
+    const badge = document.createElement('span');
+    badge.className = `speaker-badge spk-color-${getSpeakerIndex(spk) % 6}`;
+    badge.textContent = toFriendlyLabel(spk);
+    const inp = document.createElement('input');
+    inp.className = 'speaker-name-input';
+    inp.type = 'text';
+    inp.dataset.spk = spk;
+    inp.placeholder = toFriendlyLabel(spk);
+    inp.value = speakerNames[spk] || '';
     inp.addEventListener('input', () => {
       const val = inp.value.trim();
-      if (val) speakerNames[inp.dataset.spk] = val;
-      else delete speakerNames[inp.dataset.spk];
+      if (val) speakerNames[spk] = val;
+      else delete speakerNames[spk];
       renderTranscriptDisplay();
       renderTimestamps();
     });
+    row.appendChild(badge);
+    row.appendChild(inp);
+    list.appendChild(row);
   });
 }
 
@@ -1754,7 +1769,11 @@ function resetAll() {
   const tDisplay = document.getElementById('transcript-display');
   if (tDisplay) tDisplay.innerHTML = '';
   const sPanel = document.getElementById('speakers-panel');
-  if (sPanel) sPanel.classList.add('hidden');
+  if (sPanel) {
+    sPanel.classList.add('hidden');
+    const sList = sPanel.querySelector('#speakers-list');
+    if (sList) sList.innerHTML = '';  // clear rows so next session starts fresh
+  }
   if (keypointsList) keypointsList.innerHTML = '';
   questionsList.innerHTML = '';
   actionsList.innerHTML   = '';
@@ -1901,6 +1920,27 @@ function completeProgress(pct = 100) {
   _setProgress(pct);
 }
 
+// ─── Speaker transfer: re-apply real-time speaker labels to final sentences ───
+// /transcribe-full skips diarization on macOS (CPU) → all speaker fields are null.
+// This function assigns each new sentence the speaker from the real-time sentence
+// that has the greatest time overlap with it, preserving the detected speaker flow.
+function transferSpeakers(newSents, realtimeSents) {
+  for (const ns of newSents) {
+    if (ns.speaker) continue;                     // already has a speaker (GPU path)
+    const nsStart = parseFloat(ns.start) || 0;
+    const nsEnd   = parseFloat(ns.end)   || nsStart + 0.1;
+    let bestSpk = null, bestOverlap = -1;
+    for (const rs of realtimeSents) {
+      if (!rs.speaker) continue;
+      const rsStart = parseFloat(rs.start) || 0;
+      const rsEnd   = parseFloat(rs.end)   || rsStart + 0.1;
+      const overlap = Math.min(nsEnd, rsEnd) - Math.max(nsStart, rsStart);
+      if (overlap > bestOverlap) { bestOverlap = overlap; bestSpk = rs.speaker; }
+    }
+    if (bestSpk !== null) ns.speaker = bestSpk;
+  }
+}
+
 // ─── PCM → WAV encoder ────────────────────────────────────────────────────────
 function pcmToWav(f32, sampleRate = 16000) {
   const dataLen = f32.length * 2; // 16-bit mono = 2 bytes/sample
@@ -1981,6 +2021,14 @@ async function retranscribeAndAnalyze(chunks) {
     // Fall back to the real-time sentences if the server returned nothing
     // (e.g. corrupt PCM — avoids overwriting good data with an empty array).
     if (result.sentences && result.sentences.length > 0) {
+      // On macOS (CPU), /transcribe-full skips diarization → all speaker fields are null.
+      // Transfer speaker assignments from real-time sentences using timestamp overlap,
+      // so the final transcript keeps the speaker flow detected during recording.
+      const realtimeSents = allSentences.slice(); // save before overwrite
+      if (realtimeSents.some(s => s.speaker)) {
+        transferSpeakers(result.sentences, realtimeSents);
+      }
+
       allSentences = result.sentences;
       transcriptEl.value = result.fullText || '';
       renderTranscriptDisplay();
