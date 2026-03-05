@@ -397,6 +397,21 @@ ipcMain.handle('export:document', async (_e, { format, meetingData, defaultName 
   return { success: true, filePath };
 });
 
+// ─── IPC : dialog:open-audio-file ────────────────────────────────────────────
+ipcMain.handle('dialog:open-audio-file', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select audio or video file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Audio & Video', extensions: ['wav', 'mp3', 'mp4', 'mov', 'm4a', 'ogg', 'flac', 'aac', 'webm', 'mkv', 'avi'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (canceled || !filePaths.length) return null;
+  const filePath = filePaths[0];
+  return { name: path.basename(filePath), filePath };
+});
+
 // ─── IPC : save-file ──────────────────────────────────────────────────────────
 ipcMain.handle('save-file', async (_event, { defaultName, content, filters }) => {
   const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {

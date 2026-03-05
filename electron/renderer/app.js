@@ -4,6 +4,7 @@
 const WS_URL             = 'ws://127.0.0.1:8765/ws/transcribe';
 const HEALTH_URL         = 'http://127.0.0.1:8765/health';
 const RETRANSCRIBE_URL   = 'http://127.0.0.1:8765/transcribe-full';
+const TRANSCRIBE_FILE_URL = 'http://127.0.0.1:8765/transcribe-file';
 const POLL_INTERVAL      = 2000;
 const BUFFER_SIZE        = 4096;
 const VAD_THRESHOLD      = 0.004;  // RMS below which the chunk is ignored (silence)
@@ -1520,7 +1521,8 @@ async function startFileTranscription(file) {
     return;
   }
 
-  // 2. Ensure WebSocket is connected
+  // 2. Ensure WebSocket is connected (recording must be true before connectWS)
+  recording = true;
   if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
     connectWS();
   }
@@ -1535,6 +1537,7 @@ async function startFileTranscription(file) {
     }, 50);
   });
   if (!wsReady) {
+    recording = false;
     alert('ASR server unavailable.');
     setDot(dotMic, 'red');
     return;
@@ -1544,7 +1547,6 @@ async function startFileTranscription(file) {
   ws.send(JSON.stringify({ type: 'config', sampleRate: 16000, numSpeakers: currentNumSpeakers }));
 
   // 4. Initialize recording state
-  recording          = true;
   recordingStartTime = Date.now();
   savedAudioPath     = '';
   summaryText        = '';
@@ -1590,10 +1592,12 @@ async function startRecording() {
     return;
   }
 
-  // Source is an audio file → trigger the file picker
+  // Source is an audio file → open native file dialog
   const sourceVal = document.getElementById('audio-source-select')?.value || 'mic:default';
   if (sourceVal === 'file') {
-    document.getElementById('audio-file-input').click();
+    const result = await window.electronAPI.openAudioFile();
+    if (!result) return;
+    await startFileTranscriptionFromPath(result.filePath, result.name);
     return;
   }
 
@@ -2131,6 +2135,66 @@ async function retranscribeAndAnalyze(chunks) {
   } finally {
     isRetranscribing      = false;
     retranscribeAbortCtrl = null;
+    hideProcessingOverlay();
+  }
+}
+
+// ─── File transcription via Python server (handles large files via ffmpeg) ────
+async function startFileTranscriptionFromPath(filePath, fileName) {
+  allSentences       = [];
+  transcriptEl.value = '';
+  savedAudioPath     = filePath;   // original file used as audio source in history
+  recordingStartTime = Date.now();
+  renderTranscriptDisplay();
+  renderTimestamps();
+
+  const msgTranscribing = language === 'fr' ? 'Transcription du fichier en cours…' : 'Transcribing file…';
+  const msgAnalyzing    = language === 'fr' ? 'Analyse IA en cours…'               : 'AI analysis in progress…';
+  const msgSaving       = language === 'fr' ? 'Sauvegarde…'                        : 'Saving…';
+
+  showProcessingOverlay(msgTranscribing);
+  startProgressSimulation(0, 85);
+
+  try {
+    const resp = await fetch(TRANSCRIBE_FILE_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ path: filePath }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const result = await resp.json();
+    completeProgress(100);
+
+    if (result.sentences && result.sentences.length > 0) {
+      allSentences       = result.sentences;
+      transcriptEl.value = result.fullText || '';
+      renderTranscriptDisplay();
+      renderSpeakersPanel();
+      renderTimestamps();
+    }
+    setExportBtns(allSentences.length === 0);
+
+    const speakerText = buildSpeakerText(allSentences) || result.fullText || '';
+
+    if (currentMeetingId !== null) {
+      try { await autoSave(); } catch (_) {}
+    }
+
+    updateProcessingOverlay(msgAnalyzing);
+    startProgressSimulation(0, 90);
+    await new Promise(r => setTimeout(r, 300));
+    await finalAnalysis(speakerText);
+    completeProgress(100);
+
+    updateProcessingOverlay(msgSaving);
+    if (currentMeetingId !== null) await autoSave();
+
+  } catch (e) {
+    console.error('[file-transcription]', e);
+    showNotification('⚠ File transcription error: ' + e.message);
+    if (currentMeetingId !== null) try { await autoSave(); } catch (_) {}
+  } finally {
     hideProcessingOverlay();
   }
 }

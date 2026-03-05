@@ -29,6 +29,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     save: (meetingId, dataBase64, filename) => ipcRenderer.invoke('audio:save', { meetingId, dataBase64, filename }),
   },
 
+  openAudioFile: () => ipcRenderer.invoke('dialog:open-audio-file'),
+
   desktopCapturer: {
     getSources: () => ipcRenderer.invoke('desktop-capturer:get-sources'),
   },

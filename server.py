@@ -50,6 +50,9 @@ if BACKEND == 'onnx':
     if not providers:
         providers = ['CPUExecutionProvider']
 
+import subprocess
+import tempfile
+
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
@@ -674,6 +677,78 @@ async def shutdown():
         os._exit(0)
     threading.Thread(target=_exit, daemon=True).start()
     return JSONResponse({"status": "shutting down"})
+
+@app.post("/transcribe-file")
+async def transcribe_file_endpoint(request: Request):
+    """
+    Accept a JSON body {"path": "/absolute/path/to/file"}.
+    Uses ffmpeg to decode any audio/video format → 16 kHz mono float32,
+    then runs the full ASR pipeline without loading the file in the renderer.
+    """
+    data = await request.json()
+    file_path = data.get('path', '')
+    if not file_path or not os.path.isfile(file_path):
+        return JSONResponse({'error': 'File not found'}, status_code=400)
+
+    def _run():
+        import soundfile as sf
+        fd, tmp_path = tempfile.mkstemp(suffix='.wav')
+        os.close(fd)
+        try:
+            subprocess.run(
+                ['ffmpeg', '-y', '-i', file_path,
+                 '-ar', str(SAMPLE_RATE), '-ac', '1', '-f', 'wav', tmp_path],
+                check=True, capture_output=True,
+            )
+            audio, _ = sf.read(tmp_path, dtype='float32')
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+        global _speaker_embeddings, _speaker_counts, _speaker_counter
+        with _registry_lock:
+            _speaker_embeddings = {}
+            _speaker_counts     = {}
+            _speaker_counter    = 0
+
+        all_sentences = []
+        full_text     = ''
+        chunk_size    = CHUNK_SECONDS * SAMPLE_RATE
+        time_offset   = 0.0
+        buffer        = audio.copy()
+
+        while len(buffer) >= chunk_size:
+            chunk = buffer[:chunk_size]
+            sents, text, last_end = _transcribe(chunk, time_offset)
+            if sents:
+                all_sentences.extend(sents)
+            if text:
+                full_text += (' ' if full_text else '') + text
+            if sents:
+                carry  = int(last_end * SAMPLE_RATE)
+                buffer = np.concatenate([chunk[carry:], buffer[chunk_size:]])
+                time_offset += last_end
+            else:
+                buffer = buffer[chunk_size:]
+                time_offset += CHUNK_SECONDS
+
+        if len(buffer) >= SAMPLE_RATE // 2:
+            sents, text, _ = _transcribe(buffer, time_offset)
+            if sents:
+                all_sentences.extend(sents)
+            if text:
+                full_text += (' ' if full_text else '') + text
+
+        for s in all_sentences:
+            s.setdefault('speaker', None)
+
+        return all_sentences, full_text
+
+    all_sents, full_text = await asyncio.get_event_loop().run_in_executor(None, _run)
+    return JSONResponse({'sentences': all_sents, 'fullText': full_text})
+
 
 @app.post("/transcribe-full")
 async def transcribe_full(request: Request):
