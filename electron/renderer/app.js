@@ -1201,24 +1201,68 @@ function _inlineHtml(text) {
   return s;
 }
 
+function _parseTable(tableLines) {
+  // Remove separator rows (|---|---|)
+  const rows = tableLines.filter(l => !/^\|[\s\-|:]+\|?\s*$/.test(l.trim()));
+  if (!rows.length) return '';
+  const parseRow = l => l.replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+  const [headerRow, ...bodyRows] = rows;
+  const headers = parseRow(headerRow);
+  let html = '<table class="sr-table"><thead><tr>';
+  headers.forEach(h => { html += `<th>${_inlineHtml(h)}</th>`; });
+  html += '</tr></thead><tbody>';
+  bodyRows.forEach(row => {
+    const cells = parseRow(row);
+    html += '<tr>';
+    cells.forEach(c => { html += `<td>${_inlineHtml(c)}</td>`; });
+    html += '</tr>';
+  });
+  return html + '</tbody></table>';
+}
+
 window.formatRichSummary = function formatRichSummary(text) {
   if (!text || !text.trim()) return '';
   const lines = text.split('\n');
   const out   = [];
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line.trim()) continue;
-    if (/^## /.test(line)) {
-      out.push(`<h3 class="sr-section">${_inlineHtml(line.slice(3).trim())}</h3>`);
-    } else if (/^### /.test(line)) {
-      out.push(`<h4 class="sr-subsection">${_inlineHtml(line.slice(4).trim())}</h4>`);
-    } else if (/^\d+\.\s/.test(line)) {
-      out.push(`<div class="sr-item sr-numbered">${_inlineHtml(line.replace(/^\d+\.\s+/, ''))}</div>`);
-    } else if (/^[-•]\s/.test(line)) {
-      out.push(`<div class="sr-item sr-bullet">${_inlineHtml(line.replace(/^[-•]\s+/, ''))}</div>`);
-    } else {
-      out.push(`<p class="sr-para">${_inlineHtml(line)}</p>`);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i].trimEnd();
+    if (!line.trim()) { i++; continue; }
+
+    // Horizontal rule
+    if (/^-{3,}$/.test(line.trim())) {
+      out.push('<hr class="sr-hr">'); i++; continue;
     }
+    // Headings
+    if (/^## /.test(line)) {
+      out.push(`<h3 class="sr-section">${_inlineHtml(line.slice(3).trim())}</h3>`); i++; continue;
+    }
+    if (/^### /.test(line)) {
+      out.push(`<h4 class="sr-subsection">${_inlineHtml(line.slice(4).trim())}</h4>`); i++; continue;
+    }
+    // Table block
+    if (/^\|/.test(line)) {
+      const tbl = [];
+      while (i < lines.length && /^\|/.test(lines[i].trimEnd())) { tbl.push(lines[i].trimEnd()); i++; }
+      out.push(_parseTable(tbl)); continue;
+    }
+    // Numbered list
+    if (/^\d+\.\s/.test(line)) {
+      out.push(`<div class="sr-item sr-numbered">${_inlineHtml(line.replace(/^\d+\.\s+/, ''))}</div>`); i++; continue;
+    }
+    // Checkbox bullet: - [ ] or - [x] (permissive: any whitespace/content in brackets)
+    const cbm = line.match(/^[-•]\s+\[([^\]]*)\]\s*(.+)$/);
+    if (cbm) {
+      const checked = /x/i.test(cbm[1]);
+      out.push(`<div class="sr-item sr-checkbox${checked ? ' sr-checked' : ''}"><span class="sr-cb"></span>${_inlineHtml(cbm[2])}</div>`);
+      i++; continue;
+    }
+    // Regular bullet
+    if (/^[-•]\s/.test(line)) {
+      out.push(`<div class="sr-item sr-bullet">${_inlineHtml(line.replace(/^[-•]\s+/, ''))}</div>`); i++; continue;
+    }
+    // Paragraph
+    out.push(`<p class="sr-para">${_inlineHtml(line)}</p>`); i++;
   }
   return out.join('');
 };

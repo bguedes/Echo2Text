@@ -1111,27 +1111,8 @@ const getLmStudioUrl  = () => (document.getElementById('lmstudio-url')?.value ||
 const getAnalysisLang = () => localStorage.getItem('parakeet-analysis-lang') || 'en';
 
 function formatAnalysisHtml(text) {
-  const lines = text.split('\n');
-  let html = '';
-  for (const raw of lines) {
-    const line = raw.trimEnd();
-    if (!line) { html += '<br>'; continue; }
-    // Section heading
-    const hm = line.match(/^##\s+(.+)$/);
-    if (hm) { html += `<h3 class="analysis-section-title">${escHtml(hm[1])}</h3>`; continue; }
-    // Done badge [✓] or ✓
-    const dm = line.match(/^\[✓\]\s*(.*)$/) || line.match(/^✓\s+(.+)$/);
-    if (dm) { html += `<p><span class="badge-done">✓</span> ${escHtml(dm[1])}</p>`; continue; }
-    // Pending badge [ ] or ☐
-    const pm = line.match(/^\[ \]\s*(.*)$/) || line.match(/^☐\s+(.+)$/);
-    if (pm) { html += `<p><span class="badge-pending">☐</span> ${escHtml(pm[1])}</p>`; continue; }
-    // Warning ⚠
-    const wm = line.match(/^⚠\s*(.+)$/);
-    if (wm) { html += `<p><span class="badge-warn">⚠</span> ${escHtml(wm[1])}</p>`; continue; }
-    // Default paragraph
-    html += `<p>${escHtml(line)}</p>`;
-  }
-  return html;
+  const render = window.formatRichSummary || (t => `<pre>${escHtml(t)}</pre>`);
+  return `<div class="summary-rich">${render(text)}</div>`;
 }
 
 function buildAnalysisPrompt(companyName, fullMeetings, lang) {

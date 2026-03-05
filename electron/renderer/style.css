@@ -818,6 +818,62 @@ tbody tr:hover .btn-delete-row { opacity: 1; }
 /* reset counter at each section */
 .sr-section { counter-reset: sr-cnt; }
 
+/* Checkbox items */
+.sr-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding-left: 0;
+}
+.sr-checkbox::before { display: none; } /* override sr-item ::before */
+.sr-cb {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; margin-top: 2px;
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  font-size: 9px; font-weight: 700;
+  color: var(--text-muted);
+  background: var(--surface-alt);
+}
+.sr-checked .sr-cb {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+.sr-checked .sr-cb::after { content: '✓'; }
+
+/* Horizontal rule */
+.sr-hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+/* Markdown table */
+.sr-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.sr-table th, .sr-table td {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.5;
+}
+.sr-table thead th {
+  background: var(--surface-alt);
+  font-weight: 600;
+  color: var(--text);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.sr-table tbody tr:nth-child(even) { background: var(--surface-alt); }
+
 /* ─── Export row ─────────────────────────────────────────────────────────────── */
 .export-row {
   display: flex;
